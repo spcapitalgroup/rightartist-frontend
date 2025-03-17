@@ -136,6 +136,12 @@ const App: React.FC = () => {
     return isAuthenticated ? children : <Navigate to="/" replace />;
   };
 
+  const InviteRoute = ({ children }: { children: JSX.Element }) => {
+    const params = new URLSearchParams(location.search);
+    const invite = params.get("invite");
+    return invite ? children : <Navigate to="/" replace />;
+  };
+
   const isLoginOrSignup = location.pathname === "/" || location.pathname === "/signup";
 
   return (
@@ -151,13 +157,14 @@ const App: React.FC = () => {
       <div className={isAuthenticated && !isLoginOrSignup ? "pt-16" : ""}>
         <Routes>
           <Route path="/" element={<LoginPage setIsAuthenticated={setIsAuthenticated} />} />
+          <Route path="/signup" element={<InviteRoute><LoginPage setIsAuthenticated={setIsAuthenticated} /></InviteRoute>} />
           <Route path="/design-feed" element={<ProtectedRoute><FeedPage feedType="design" /></ProtectedRoute>} />
           <Route path="/booking-feed" element={<ProtectedRoute><FeedPage feedType="booking" /></ProtectedRoute>} />
-          <Route path="/messages" element={<ProtectedRoute>{!isAdmin ? <MessagingPage messages={messages} /> : <Navigate to="/admin" replace />}</ProtectedRoute>} />
+          <Route path="/messages" element={<ProtectedRoute>{userType !== "admin" ? <MessagingPage messages={messages} /> : <Navigate to="/admin" replace />}</ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/stats" element={<ProtectedRoute>{(userType === "designer" || (userType === "shop" && isPaid)) ? <StatsPage /> : <Navigate to="/" replace />}</ProtectedRoute>} />
           <Route path="/overlay" element={<ProtectedRoute>{userType === "shop" && isElite ? <OverlayPage /> : <Navigate to="/" replace />}</ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute>{isAdmin ? <AdminPage /> : <Navigate to="/" replace />}</ProtectedRoute>} />
+          <Route path="/admin" element={<ProtectedRoute>{userType === "admin" ? <AdminPage /> : <Navigate to="/" replace />}</ProtectedRoute>} />
           <Route path="/notifications" element={<ProtectedRoute><NotificationsPage notifications={notifications} setNotifications={setNotifications} /></ProtectedRoute>} />
         </Routes>
       </div>

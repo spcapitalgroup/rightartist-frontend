@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({ setIsAuthenticated }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -10,9 +10,39 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [userType, setUserType] = useState<"fan" | "designer" | "shop">("fan");
+  const [invite, setInvite] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (location.pathname === "/signup") {
+      setIsLogin(false); // Force signup mode
+      const params = new URLSearchParams(location.search);
+      const inviteCode = params.get("invite");
+      if (!inviteCode) {
+        setError("Invite link required for signup");
+        navigate("/");
+      } else {
+        setInvite(inviteCode);
+        axios.get(`${process.env.REACT_APP_API_URL}/api/admin/validate-invite?invite=${inviteCode}`)
+          .then(response => {
+            if (!response.data.valid) {
+              setError("Invalid or used invite link");
+              navigate("/");
+            }
+          })
+          .catch(err => {
+            console.error("❌ Validate Invite Error:", err);
+            setError("Failed to validate invite link");
+            navigate("/");
+          });
+      }
+    } else {
+      setIsLogin(true); // Default to login for "/"
+    }
+  }, [location, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,13 +76,14 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
     try {
       const signupUrl = `${process.env.REACT_APP_API_URL}/api/auth/signup`;
       console.log("📤 Sending signup to:", signupUrl);
-      console.log("📤 Payload:", { email, password, firstName, lastName, userType });
+      console.log("📤 Payload:", { email, password, firstName, lastName, userType, invite });
       const response = await axios.post(signupUrl, {
         email,
         password,
         firstName,
         lastName,
         userType,
+        invite,
       });
       const token = response.data.token;
       localStorage.setItem("token", token);
@@ -92,7 +123,7 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
                 onChange={(e) => setFirstName(e.target.value)}
                 placeholder="First Name"
                 className="w-full p-3 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light focus:outline-none focus:ring-2 focus:ring-tattoo-red"
-                required={!isLogin}
+                required
               />
               <input
                 type="text"
@@ -100,7 +131,7 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
                 onChange={(e) => setLastName(e.target.value)}
                 placeholder="Last Name"
                 className="w-full p-3 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light focus:outline-none focus:ring-2 focus:ring-tattoo-red"
-                required={!isLogin}
+                required
               />
             </>
           )}
@@ -148,18 +179,11 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
           </button>
         </form>
 
-        <p className="text-tattoo-gray text-center mt-4">
-          {isLogin ? "Need an account?" : "Already have an account?"}{" "}
-          <button
-            onClick={() => {
-              setIsLogin(!isLogin);
-              setError("");
-            }}
-            className="text-tattoo-red hover:underline"
-          >
-            {isLogin ? "Sign Up" : "Login"}
-          </button>
-        </p>
+        {isLogin && (
+          <p className="text-tattoo-gray text-center mt-4">
+            Contact an admin for an invite to sign up.
+          </p>
+        )}
       </div>
     </motion.div>
   );
