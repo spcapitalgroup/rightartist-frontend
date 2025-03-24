@@ -13,6 +13,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
   const navigate = useNavigate();
   const userType = localStorage.getItem("userType") || "fan";
   const isAdmin = localStorage.getItem("isAdmin") === "true";
+  const userFullName = `${localStorage.getItem("firstName")} ${localStorage.getItem("lastName")}`
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
@@ -129,6 +130,9 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
           variants={menuVariants}
           className="fixed top-16 left-0 w-64 bg-tattoo-gray/90 h-full shadow-lg z-40"
         >
+          <div className="flex flex-col p-4 space-y-4">
+            Hello {userFullName}!
+          </div>
           <div className="flex flex-col p-4 space-y-4">
             {(userType === "shop" || userType === "elite" || userType === "designer") && (
               <Link

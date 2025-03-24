@@ -58,9 +58,16 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
       localStorage.setItem("userType", decoded.userType);
       localStorage.setItem("isAdmin", decoded.isAdmin.toString());
       localStorage.setItem("isPaid", decoded.isPaid.toString());
+      localStorage.setItem("firstName", decoded.firstName?.toString());
+      localStorage.setItem("lastName", decoded.lastName?.toString());
       setIsAuthenticated(true);
       setError("");
-      navigate("/design-feed");
+      if(decoded.userType === "fan") {
+        navigate("/booking-feed");
+      } else {
+        navigate("/design-feed");
+      }
+      
     } catch (err: any) {
       console.error("❌ Login Error:", err.response?.data || err.message);
       setError(err.response?.data?.message || "Login failed");
