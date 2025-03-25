@@ -12,3 +12,32 @@ body {
   background-color: #1a1a1a;
   color: #e5e7eb;
 }
+
+.landing-page {
+  font-family: Arial, sans-serif;
+}
+
+.hero {
+  background-color: #1a202c;
+  color: white;
+}
+
+.users {
+  background-color: #f7fafc;
+}
+
+.user-card {
+  transition: transform 0.2s;
+}
+
+.user-card:hover {
+  transform: scale(1.05);
+}
+
+.features {
+  background-color: #edf2f7;
+}
+
+.feature {
+  padding: 1rem;
+}

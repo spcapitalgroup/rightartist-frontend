@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import axios from "axios";
+import LandingPage from "./components/LandingPage";
 import LoginPage from "./components/LoginPage";
 import FeedPage from "./components/FeedPage";
 import MessagingPage from "./components/MessagingPage";
@@ -133,16 +134,16 @@ const App: React.FC = () => {
   }, [isAuthenticated, token, userId, isAdmin]);
 
   const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
-    return isAuthenticated ? children : <Navigate to="/" replace />;
+    return isAuthenticated ? children : <Navigate to="/login" replace />;
   };
 
   const InviteRoute = ({ children }: { children: JSX.Element }) => {
     const params = new URLSearchParams(location.search);
     const invite = params.get("invite");
-    return invite ? children : <Navigate to="/" replace />;
+    return invite ? children : <Navigate to="/login" replace />;
   };
 
-  const isLoginOrSignup = location.pathname === "/" || location.pathname === "/signup";
+  const isLoginOrSignup = location.pathname === "/" || location.pathname === "/login" || location.pathname === "/signup"; // Added "/" to hide NavBar on landing page
 
   return (
     <>
@@ -156,7 +157,8 @@ const App: React.FC = () => {
       )}
       <div className={isAuthenticated && !isLoginOrSignup ? "pt-16" : ""}>
         <Routes>
-          <Route path="/" element={<LoginPage setIsAuthenticated={setIsAuthenticated} />} />
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<LoginPage setIsAuthenticated={setIsAuthenticated} />} />
           <Route path="/signup" element={<InviteRoute><LoginPage setIsAuthenticated={setIsAuthenticated} /></InviteRoute>} />
           <Route path="/design-feed" element={<ProtectedRoute><FeedPage feedType="design" /></ProtectedRoute>} />
           <Route path="/booking-feed" element={<ProtectedRoute><FeedPage feedType="booking" /></ProtectedRoute>} />
