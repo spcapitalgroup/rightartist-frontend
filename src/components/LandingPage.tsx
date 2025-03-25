@@ -52,9 +52,12 @@ const LandingPage: React.FC = () => {
               <li><span className="font-semibold">Apprentice Reach:</span> Your new artists shine—post requests to our Design Feed, get pro designs back, and build their rep fast.</li>
               <li><span className="font-semibold">Secure & Simple:</span> DRM-protection keeps your work safe, tiled feeds make browsing a breeze—focus on tattooing, not chasing.</li>
             </ul>
-            <Link to="/signup" className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 inline-block mt-auto transition-colors duration-300">
-              Sign Up as a Shop—Start Today!
-            </Link>
+            <div className="mt-auto text-center">
+              <p className="text-gray-600 mb-2">We’re onboarding our first 50 shops! Contact us to join.</p>
+              <a href="mailto:support@rightartistry.com" className="text-red-600 font-semibold hover:underline">
+                Request to Join
+              </a>
+            </div>
           </div>
 
           {/* Fan Tile */}
