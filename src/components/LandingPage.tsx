@@ -1,14 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
 
-// Mock user data (replace with API fetch later)
-const mockUsers = [
-  { id: 1, name: "InkSpot Studio", role: "Shop Pro", price: "$24.99/month", image: "https://via.placeholder.com/150" },
-  { id: 2, name: "Art by Jane", role: "Art Designer", price: "$25-$100/design", image: "https://via.placeholder.com/150" },
-  { id: 3, name: "Tattoo Haven", role: "Shop Elite", price: "$49.99/month", image: "https://via.placeholder.com/150" },
-  { id: 4, name: "Designs by Alex", role: "Art Designer", price: "$25-$100/design", image: "https://via.placeholder.com/150" },
-];
-
 const LandingPage: React.FC = () => {
   return (
     <div className="landing-page min-h-screen font-sans">
@@ -20,21 +12,25 @@ const LandingPage: React.FC = () => {
           </Link>
         </div>
         <h1 className="text-5xl font-bold mb-4 tracking-tight">Welcome to RightArtist</h1>
-        <p className="text-xl mb-8 tracking-wide">Connect tattoo shops with art designers for DRM-protected designs in 30 minutes.</p>
+        <p className="text-xl mb-8 tracking-wide">Connect tattoo shops with art designers for DRM-protected designs in under an hour.</p>
       </section>
 
-      {/* Tiled User Information */}
-      <section className="users py-16 px-4 bg-gray-100">
-        <h2 className="text-3xl font-bold text-center mb-12 text-gray-800 tracking-tight">Meet Our Community</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 max-w-7xl mx-auto">
-          {mockUsers.map((user) => (
-            <div key={user.id} className="user-card bg-white shadow-lg rounded-lg p-4 text-center hover:scale-105 transition-transform duration-300 border border-gray-200">
-              <img src={user.image} alt={user.name} className="w-24 h-24 rounded-full mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-gray-800">{user.name}</h3>
-              <p className="text-gray-600">{user.role}</p>
-              <p className="text-gray-800 font-bold">{user.price}</p>
-            </div>
-          ))}
+      {/* Why Join RightArtist? Section */}
+      <section className="features bg-gray-200 py-16 px-4 text-center">
+        <h2 className="text-3xl font-bold mb-12 text-gray-800 tracking-tight">Why Join RightArtist?</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          <div className="feature p-4">
+            <h3 className="text-xl font-semibold mb-2 text-gray-800 tracking-tight">Fast Designs</h3>
+            <p className="text-gray-600 tracking-wide">DRM-protected designs delivered in under an hour for $25-$100.</p>
+          </div>
+          <div className="feature p-4">
+            <h3 className="text-xl font-semibold mb-2 text-gray-800 tracking-tight">Secure IP Protection</h3>
+            <p className="text-gray-600 tracking-wide">Our DRM technology ensures your designs are safe—use them with confidence, knowing your work is protected.</p>
+          </div>
+          <div className="feature p-4">
+            <h3 className="text-xl font-semibold mb-2 text-gray-800 tracking-tight">Community Driven</h3>
+            <p className="text-gray-600 tracking-wide">Connect shops, designers, and fans through our Design Feed.</p>
+          </div>
         </div>
       </section>
 
@@ -48,12 +44,13 @@ const LandingPage: React.FC = () => {
             <p className="text-lg font-semibold text-gray-600 mb-4 tracking-wide">More Clients, Less Time, Bigger Reach</p>
             <ul className="text-left text-gray-600 mb-6 space-y-2">
               <li><span className="font-semibold">Increased Clients:</span> Connect directly with fans seeking custom tattoos—fill your chairs with bookings from our mobile app.</li>
-              <li><span className="font-semibold">Time Efficiency:</span> Get polished designs in 30 minutes flat—no more hours sketching, just ink-ready art (unlimited basics with Shop Pro, priority queue with Shop Elite).</li>
+              <li><span className="font-semibold">Time Efficiency:</span> Get polished designs in under an hour—no more hours sketching, just ink-ready art (unlimited basics with Shop Pro, priority queue with Shop Elite).</li>
               <li><span className="font-semibold">Apprentice Reach:</span> Your new artists shine—post requests to our Design Feed, get pro designs back, and build their rep fast.</li>
               <li><span className="font-semibold">Secure & Simple:</span> DRM-protection keeps your work safe, tiled feeds make browsing a breeze—focus on tattooing, not chasing.</li>
             </ul>
             <div className="mt-auto text-center">
               <p className="text-gray-600 mb-2">We’re onboarding our first 50 shops! Contact us to join.</p>
+              {/* TODO: Verify this email address is active and monitored */}
               <a href="mailto:support@rightartistry.com" className="text-red-600 font-semibold hover:underline">
                 Request to Join
               </a>
@@ -92,21 +89,25 @@ const LandingPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Features Section (Moved Below "Join the RightArtist Community") */}
-      <section className="features bg-gray-200 py-16 px-4 text-center">
-        <h2 className="text-3xl font-bold mb-12 text-gray-800 tracking-tight">Why Choose RightArtist?</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-          <div className="feature p-4">
-            <h3 className="text-xl font-semibold mb-2 text-gray-800 tracking-tight">Fast Designs</h3>
-            <p className="text-gray-600 tracking-wide">DRM-protected designs delivered in 30 minutes for $25-$100.</p>
+      {/* Meet the Founder Section */}
+      <section className="meet-founder bg-gray-100 py-16 px-4">
+        <h2 className="text-3xl font-bold text-center mb-12 text-gray-800 tracking-tight">Meet the Founder</h2>
+        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-8">
+          {/* Founder Image */}
+          <div className="w-full md:w-1/3">
+            {/* TODO: Replace with actual photo of Trenton Shupp */}
+            <img
+              src="https://via.placeholder.com/300x300"
+              alt="Trenton Shupp, Founder of RightArtist"
+              className="w-full h-auto rounded-lg shadow-lg"
+            />
           </div>
-          <div className="feature p-4">
-            <h3 className="text-xl font-semibold mb-2 text-gray-800 tracking-tight">Shop Subscriptions</h3>
-            <p className="text-gray-600 tracking-wide">Shop Pro ($24.99/month) and Shop Elite ($49.99/month) plans.</p>
-          </div>
-          <div className="feature p-4">
-            <h3 className="text-xl font-semibold mb-2 text-gray-800 tracking-tight">Community Driven</h3>
-            <p className="text-gray-600 tracking-wide">Connect shops, designers, and fans through our Design Feed.</p>
+          {/* Founder Content */}
+          <div className="w-full md:w-2/3 text-center md:text-left">
+            <p className="text-gray-600 tracking-wide italic">
+              "I’ve always been obsessed with tattoos—the art, the culture, the stories they tell. That’s why I created RightArtist: to make it easier for shops, artists, and fans to connect and create amazing designs in under an hour, all while keeping their work safe with DRM protection. I can’t wait to see how this platform empowers our tattoo community to thrive."
+            </p>
+            <p className="text-gray-800 font-semibold text-lg mt-4 italic">-Trenton Shupp</p>
           </div>
         </div>
       </section>
