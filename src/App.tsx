@@ -13,21 +13,50 @@ import NavBar from "./components/NavBar";
 import NotificationsPage from "./components/NotificationsPage";
 
 const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem("authToken"));
+  const [token, setToken] = useState(localStorage.getItem("authToken"));
   const [notifications, setNotifications] = useState<string[]>([]);
   const [messages, setMessages] = useState<string[]>([]);
   const location = useLocation();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
-  const token = localStorage.getItem("token");
+
+  // Derive user details from the token
   const userId = token ? JSON.parse(atob(token.split(".")[1])).id : "";
   const userType = token ? JSON.parse(atob(token.split(".")[1])).userType : "";
   const isAdmin = token ? JSON.parse(atob(token.split(".")[1])).isAdmin : false;
   const isPaid = token ? JSON.parse(atob(token.split(".")[1])).isPaid : false;
   const isElite = token ? JSON.parse(atob(token.split(".")[1])).isElite : false;
 
+  // Listen for changes to localStorage.getItem("authToken")
   useEffect(() => {
-    setIsAuthenticated(!!token);
+    const handleStorageChange = () => {
+      const newToken = localStorage.getItem("authToken");
+      setToken(newToken);
+      setIsAuthenticated(!!newToken);
+    };
+
+    // Initial check
+    handleStorageChange();
+
+    // Listen for storage events (e.g., when token changes in another tab)
+    window.addEventListener("storage", handleStorageChange);
+
+    // Poll localStorage for changes (in case storage event doesn't fire in the same tab)
+    const interval = setInterval(() => {
+      const currentToken = localStorage.getItem("authToken");
+      if (currentToken !== token) {
+        handleStorageChange();
+      }
+    }, 1000);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [token]);
+
+  useEffect(() => {
     if (!token || !userId) return;
 
     const fetchNotifications = async () => {
@@ -143,7 +172,7 @@ const App: React.FC = () => {
     return invite ? children : <Navigate to="/login" replace />;
   };
 
-  const isLoginOrSignup = location.pathname === "/" || location.pathname === "/login" || location.pathname === "/signup"; // Added "/" to hide NavBar on landing page
+  const isLoginOrSignup = location.pathname === "/" || location.pathname === "/login" || location.pathname === "/signup";
 
   return (
     <>
@@ -157,7 +186,7 @@ const App: React.FC = () => {
       )}
       <div className={isAuthenticated && !isLoginOrSignup ? "pt-16" : ""}>
         <Routes>
-          <Route path="/" element={<LandingPage />} />
+          <Route path="/" element={<LandingPage setIsAuthenticated={setIsAuthenticated} />} />
           <Route path="/login" element={<LoginPage setIsAuthenticated={setIsAuthenticated} />} />
           <Route path="/signup" element={<InviteRoute><LoginPage setIsAuthenticated={setIsAuthenticated} /></InviteRoute>} />
           <Route path="/design-feed" element={<ProtectedRoute><FeedPage feedType="design" /></ProtectedRoute>} />

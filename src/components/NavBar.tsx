@@ -11,16 +11,18 @@ interface NavBarProps {
 
 const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setNotifications, messages }) => {
   const navigate = useNavigate();
-  const userType = localStorage.getItem("userType") || "fan";
-  const isAdmin = localStorage.getItem("isAdmin") === "true";
-  const userFullName = `${localStorage.getItem("firstName")} ${localStorage.getItem("lastName")}`
+  const token = localStorage.getItem("authToken");
+  const userType = token ? JSON.parse(atob(token.split(".")[1])).userType : "";
+  const userRole = userType === "fan" ? "Fan" : userType === "designer" ? "ArtDesigner" : userType;
+  const isAdmin = token ? JSON.parse(atob(token.split(".")[1])).isAdmin : false;
+  const firstName = token ? JSON.parse(atob(token.split(".")[1])).firstName : "";
+  const lastName = token ? JSON.parse(atob(token.split(".")[1])).lastName : "";
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("userType");
-    localStorage.removeItem("isAdmin");
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("userRole");
     setIsAuthenticated(false);
     navigate("/");
   };
@@ -131,10 +133,30 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
           className="fixed top-16 left-0 w-64 bg-tattoo-gray/90 h-full shadow-lg z-40"
         >
           <div className="flex flex-col p-4 space-y-4">
-            Hello {userFullName}!
+            <span className="text-tattoo-light text-lg">
+              Hello {firstName} {lastName}!
+            </span>
           </div>
           <div className="flex flex-col p-4 space-y-4">
-            {(userType === "shop" || userType === "elite" || userType === "designer") && (
+            {userRole === "Fan" && (
+              <Link
+                to="/booking-feed"
+                onClick={toggleMenu}
+                className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+              >
+                Dashboard (Booking Feed)
+              </Link>
+            )}
+            {userRole === "ArtDesigner" && (
+              <Link
+                to="/design-feed"
+                onClick={toggleMenu}
+                className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+              >
+                Dashboard (Design Feed)
+              </Link>
+            )}
+            {(userRole === "Shop" || userRole === "Elite" || userRole === "ArtDesigner") && userRole !== "ArtDesigner" && (
               <Link
                 to="/design-feed"
                 onClick={toggleMenu}
@@ -143,7 +165,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
                 Design Feed
               </Link>
             )}
-            {(userType === "shop" || userType === "elite" || userType === "fan") && (
+            {(userRole === "Shop" || userRole === "Elite" || userRole === "Fan") && userRole !== "Fan" && (
               <Link
                 to="/booking-feed"
                 onClick={toggleMenu}
@@ -171,7 +193,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
             >
               Settings
             </Link>
-            {userType === "designer" && (
+            {userRole === "ArtDesigner" && (
               <Link
                 to="/stats"
                 onClick={toggleMenu}

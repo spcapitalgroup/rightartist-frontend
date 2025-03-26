@@ -1,7 +1,18 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import JoinUsForm from "./JoinUsForm";
+import FanSignupForm from "./FanSignupForm";
+import ArtDesignerSignupForm from "./ArtDesignerSignupForm";
 
-const LandingPage: React.FC = () => {
+interface LandingPageProps {
+  setIsAuthenticated: (val: boolean) => void;
+}
+
+const LandingPage: React.FC<LandingPageProps> = ({ setIsAuthenticated }) => {
+  const [isShopFormOpen, setIsShopFormOpen] = useState(false);
+  const [isFanFormOpen, setIsFanFormOpen] = useState(false);
+  const [isDesignerFormOpen, setIsDesignerFormOpen] = useState(false);
+
   return (
     <div className="landing-page min-h-screen font-sans">
       {/* Hero Section */}
@@ -50,10 +61,12 @@ const LandingPage: React.FC = () => {
             </ul>
             <div className="mt-auto text-center">
               <p className="text-gray-600 mb-2">We’re onboarding our first 50 shops! Contact us to join.</p>
-              {/* TODO: Verify this email address is active and monitored */}
-              <a href="mailto:support@rightartistry.com" className="text-red-600 font-semibold hover:underline">
+              <button
+                onClick={() => setIsShopFormOpen(true)}
+                className="text-red-600 font-semibold hover:underline"
+              >
                 Request to Join
-              </a>
+              </button>
             </div>
           </div>
 
@@ -67,9 +80,12 @@ const LandingPage: React.FC = () => {
               <li><span className="font-semibold">Book with Ease:</span> Secure your slot with a deposit via our mobile app—save your spot, no surprises.</li>
               <li><span className="font-semibold">Find Your Match:</span> Browse tiled feeds of designs and artists near you—get the ink you love, every time.</li>
             </ul>
-            <Link to="/signup" className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 inline-block mt-auto transition-colors duration-300">
+            <button
+              onClick={() => setIsFanFormOpen(true)}
+              className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 inline-block mt-auto transition-colors duration-300"
+            >
               Join as a Fan—Design Your Next Ink!
-            </Link>
+            </button>
           </div>
 
           {/* Art Designer Tile */}
@@ -82,9 +98,12 @@ const LandingPage: React.FC = () => {
               <li><span className="font-semibold">Theft-Proof:</span> DRM-protection locks your work—shops can’t steal, you keep control.</li>
               <li><span className="font-semibold">Design Freedom:</span> Answer shop requests via our tiled Design Feed—craft what you love, when you want.</li>
             </ul>
-            <Link to="/signup" className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 inline-block mt-auto transition-colors duration-300">
+            <button
+              onClick={() => setIsDesignerFormOpen(true)}
+              className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 inline-block mt-auto transition-colors duration-300"
+            >
               Sign Up as an Art Designer—Start Earning Now!
-            </Link>
+            </button>
           </div>
         </div>
       </section>
@@ -92,17 +111,14 @@ const LandingPage: React.FC = () => {
       {/* Meet the Founder Section */}
       <section className="meet-founder bg-gray-100 py-16 px-4">
         <h2 className="text-3xl font-bold text-center mb-12 text-gray-800 tracking-tight">Meet the Founder</h2>
-        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center gap-8">
-          {/* Founder Image */}
+        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-start gap-8">
           <div className="w-full md:w-1/3">
-            {/* TODO: Replace with actual photo of Trenton Shupp */}
             <img
               src="https://via.placeholder.com/300x300"
               alt="Trenton Shupp, Founder of RightArtist"
               className="w-full h-auto rounded-lg shadow-lg"
             />
           </div>
-          {/* Founder Content */}
           <div className="w-full md:w-2/3 text-center md:text-left">
             <p className="text-gray-600 tracking-wide italic">
               "I’ve always been obsessed with tattoos—the art, the culture, the stories they tell. That’s why I created RightArtist: to make it easier for shops, artists, and fans to connect and create amazing designs in under an hour, all while keeping their work safe with DRM protection. I can’t wait to see how this platform empowers our tattoo community to thrive."
@@ -111,6 +127,21 @@ const LandingPage: React.FC = () => {
           </div>
         </div>
       </section>
+
+      {/* Modals for Forms */}
+      {isShopFormOpen && <JoinUsForm onClose={() => setIsShopFormOpen(false)} />}
+      {isFanFormOpen && (
+        <FanSignupForm
+          onClose={() => setIsFanFormOpen(false)}
+          setIsAuthenticated={setIsAuthenticated}
+        />
+      )}
+      {isDesignerFormOpen && (
+        <ArtDesignerSignupForm
+          onClose={() => setIsDesignerFormOpen(false)}
+          setIsAuthenticated={setIsAuthenticated}
+        />
+      )}
     </div>
   );
 };
