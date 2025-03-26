@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 
 interface NavBarProps {
@@ -7,31 +7,31 @@ interface NavBarProps {
   notifications: string[];
   setNotifications: (notifications: string[]) => void;
   messages: string[];
+  onLogoClick: () => void; // Add onLogoClick prop
 }
 
-const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setNotifications, messages }) => {
-  const navigate = useNavigate();
+const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setNotifications, messages, onLogoClick }) => {
   const token = localStorage.getItem("authToken");
-  const userType = token ? JSON.parse(atob(token.split(".")[1])).userType : "";
-  const userRole = userType === "fan" ? "Fan" : userType === "designer" ? "ArtDesigner" : userType;
-  const isAdmin = token ? JSON.parse(atob(token.split(".")[1])).isAdmin : false;
-  const firstName = token ? JSON.parse(atob(token.split(".")[1])).firstName : "";
-  const lastName = token ? JSON.parse(atob(token.split(".")[1])).lastName : "";
+  const decoded = token ? JSON.parse(atob(token.split(".")[1])) : {};
+  const userType = decoded.userType || "";
+  const userRole = userType === "fan" ? "Fan" : userType === "designer" ? "ArtDesigner" : userType === "shop" ? "Shop" : userType;
+  const isAdmin = decoded.isAdmin || false;
+  const firstName = decoded.firstName || "";
+  const lastName = decoded.lastName || "";
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-
-  const handleLogout = () => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("userRole");
-    setIsAuthenticated(false);
-    navigate("/");
-  };
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
   const toggleNotifications = () => setIsNotificationsOpen(!isNotificationsOpen);
   const clearNotifications = () => {
     setNotifications([]);
     setIsNotificationsOpen(false);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("userRole");
+    setIsAuthenticated(false);
   };
 
   const visibleNotifications = notifications.slice(0, 5);
@@ -64,7 +64,11 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
             <button onClick={toggleMenu} className="text-tattoo-light text-2xl focus:outline-none">
               ☰
             </button>
-            <Link to="/" className="flex-shrink-0 flex items-center">
+            <Link 
+              to="/"
+              onClick={onLogoClick} // Use the onLogoClick prop passed from App.tsx
+              className="flex-shrink-0 flex items-center"
+            >
               <span className="text-tattoo-red text-2xl font-bold tracking-tight">RightArtist</span>
             </Link>
           </div>
@@ -156,23 +160,23 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
                 Dashboard (Design Feed)
               </Link>
             )}
-            {(userRole === "Shop" || userRole === "Elite" || userRole === "ArtDesigner") && userRole !== "ArtDesigner" && (
-              <Link
-                to="/design-feed"
-                onClick={toggleMenu}
-                className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
-              >
-                Design Feed
-              </Link>
-            )}
-            {(userRole === "Shop" || userRole === "Elite" || userRole === "Fan") && userRole !== "Fan" && (
-              <Link
-                to="/booking-feed"
-                onClick={toggleMenu}
-                className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
-              >
-                Booking Feed
-              </Link>
+            {userRole === "Shop" && (
+              <>
+                <Link
+                  to="/design-feed"
+                  onClick={toggleMenu}
+                  className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+                >
+                  Design Feed
+                </Link>
+                <Link
+                  to="/booking-feed"
+                  onClick={toggleMenu}
+                  className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+                >
+                  Booking Feed
+                </Link>
+              </>
             )}
             <Link
               to="/messages"

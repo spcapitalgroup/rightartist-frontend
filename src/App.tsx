@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import LandingPage from "./components/LandingPage";
 import LoginPage from "./components/LoginPage";
@@ -11,7 +11,7 @@ import OverlayPage from "./components/OverlayPage";
 import AdminPage from "./components/AdminPage";
 import NavBar from "./components/NavBar";
 import NotificationsPage from "./components/NotificationsPage";
-import PostPage from "./components/PostPage"; // Import the new PostPage component
+import PostPage from "./components/PostPage";
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem("authToken"));
@@ -19,6 +19,7 @@ const App: React.FC = () => {
   const [notifications, setNotifications] = useState<string[]>([]);
   const [messages, setMessages] = useState<string[]>([]);
   const location = useLocation();
+  const navigate = useNavigate();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttempts = useRef(0);
 
@@ -28,6 +29,38 @@ const App: React.FC = () => {
   const isAdmin = token ? JSON.parse(atob(token.split(".")[1])).isAdmin : false;
   const isPaid = token ? JSON.parse(atob(token.split(".")[1])).isPaid : false;
   const isElite = token ? JSON.parse(atob(token.split(".")[1])).isElite : false;
+
+  // Debug log to verify userType
+  useEffect(() => {
+    console.log("🔍 App.tsx - userType:", userType, "isAuthenticated:", isAuthenticated, "location:", location.pathname);
+  }, [userType, isAuthenticated, location.pathname]);
+
+  // Handle logout at the app level
+  const handleLogoClick = () => {
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("userRole");
+    setIsAuthenticated(false);
+    setToken(null); // Clear token to ensure NavBar hides
+    setNotifications([]); // Clear notifications
+    setMessages([]); // Clear messages
+    navigate("/"); // Redirect to landing page
+  };
+
+  // Handle post-login redirect
+  useEffect(() => {
+    // Redirect if the user is authenticated and on a login/signup/landing page
+    if (isAuthenticated && (location.pathname === "/login" || location.pathname === "/signup" || location.pathname === "/")) {
+      if (isAdmin) {
+        navigate("/admin");
+      } else if (userType === "fan") {
+        navigate("/booking-feed");
+      } else if (userType === "designer") {
+        navigate("/design-feed");
+      } else if (userType === "shop") {
+        navigate("/design-feed");
+      }
+    }
+  }, [isAuthenticated, userType, isAdmin, location.pathname, navigate]);
 
   // Listen for changes to localStorage.getItem("authToken")
   useEffect(() => {
@@ -65,20 +98,16 @@ const App: React.FC = () => {
         const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/notifications`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        if (response.data.success) {
-          const queuedNotifications = response.data.notifications.map((n: { message: string }) => n.message);
-          console.log("🔍 Fetched queued notifications for:", userId, queuedNotifications);
-          setNotifications((prev) => [...new Set([...prev, ...queuedNotifications])]);
-        } else {
-          console.error("❌ Fetch notifications failed:", response.data.message);
-        }
-      } catch (error) {
-        console.error("❌ Failed to fetch notifications:", error);
+        console.log("🔍 Fetched queued notifications for:", userId, response.data);
+        setNotifications(response.data || []);
+      } catch (error: any) {
+        console.error("❌ Failed to fetch notifications:", error.response?.data?.message || error.message);
+        setNotifications([]);
       }
     };
 
     const connectWebSocket = () => {
-      const ws = new WebSocket("ws://localhost:3000");
+      const ws = new WebSocket("ws://localhost:3002");
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -123,6 +152,7 @@ const App: React.FC = () => {
         if (reconnectAttempts.current < 5) {
           setTimeout(connectWebSocket, 1000 * Math.pow(2, reconnectAttempts.current));
           reconnectAttempts.current += 1;
+          console.log("🔍 Reconnect attempt:", reconnectAttempts.current);
         }
       };
 
@@ -159,7 +189,11 @@ const App: React.FC = () => {
       console.log("🛑 Closing WebSocket");
       clearInterval(heartbeat);
       if (!isAdmin) window.removeEventListener("focus", handleFocus);
-      if (wsRef.current) wsRef.current.close();
+      setTimeout(() => {
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
+      }, 500);
     };
   }, [isAuthenticated, token, userId, isAdmin]);
 
@@ -173,7 +207,7 @@ const App: React.FC = () => {
     return invite ? children : <Navigate to="/login" replace />;
   };
 
-  const isLoginOrSignup = location.pathname === "/" || location.pathname === "/login" || location.pathname === "/signup";
+  const isLoginOrSignup = location.pathname === "/login" || location.pathname === "/signup";
 
   return (
     <>
@@ -183,6 +217,7 @@ const App: React.FC = () => {
           notifications={[...notifications]} 
           setNotifications={setNotifications} 
           messages={messages} 
+          onLogoClick={handleLogoClick} // Pass the logout handler to NavBar
         />
       )}
       <div className={isAuthenticated && !isLoginOrSignup ? "pt-16" : ""}>
@@ -190,15 +225,51 @@ const App: React.FC = () => {
           <Route path="/" element={<LandingPage setIsAuthenticated={setIsAuthenticated} />} />
           <Route path="/login" element={<LoginPage setIsAuthenticated={setIsAuthenticated} />} />
           <Route path="/signup" element={<InviteRoute><LoginPage setIsAuthenticated={setIsAuthenticated} /></InviteRoute>} />
-          <Route path="/design-feed" element={<ProtectedRoute><FeedPage feedType="design" /></ProtectedRoute>} />
-          <Route path="/booking-feed" element={<ProtectedRoute><FeedPage feedType="booking" /></ProtectedRoute>} />
-          <Route path="/post/:id" element={<ProtectedRoute><PostPage /></ProtectedRoute>} /> {/* New route for PostPage */}
-          <Route path="/messages" element={<ProtectedRoute>{userType !== "admin" ? <MessagingPage messages={messages} /> : <Navigate to="/admin" replace />}</ProtectedRoute>} />
+          <Route path="/design-feed" element={
+            <ProtectedRoute>
+              {(userType === "designer" || userType === "shop") ? (
+                <FeedPage feedType="design" />
+              ) : (
+                <Navigate to="/" replace />
+              )}
+            </ProtectedRoute>
+          } />
+          <Route path="/booking-feed" element={
+            <ProtectedRoute>
+              {(userType === "fan" || userType === "shop") ? (
+                <FeedPage feedType="booking" />
+              ) : (
+                <Navigate to="/" replace />
+              )}
+            </ProtectedRoute>
+          } />
+          <Route path="/post/:id" element={<ProtectedRoute><PostPage /></ProtectedRoute>} />
+          <Route path="/messages" element={
+            <ProtectedRoute>
+              {userType !== "admin" ? <MessagingPage messages={messages} /> : <Navigate to="/admin" replace />}
+            </ProtectedRoute>
+          } />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
-          <Route path="/stats" element={<ProtectedRoute>{(userType === "designer" || (userType === "shop" && isPaid)) ? <StatsPage /> : <Navigate to="/" replace />}</ProtectedRoute>} />
-          <Route path="/overlay" element={<ProtectedRoute>{userType === "shop" && isElite ? <OverlayPage /> : <Navigate to="/" replace />}</ProtectedRoute>} />
-          <Route path="/admin" element={<ProtectedRoute>{userType === "admin" ? <AdminPage /> : <Navigate to="/" replace />}</ProtectedRoute>} />
-          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage notifications={notifications} setNotifications={setNotifications} /></ProtectedRoute>} />
+          <Route path="/stats" element={
+            <ProtectedRoute>
+              {(userType === "designer" || (userType === "shop" && isPaid)) ? <StatsPage /> : <Navigate to="/" replace />}
+            </ProtectedRoute>
+          } />
+          <Route path="/overlay" element={
+            <ProtectedRoute>
+              {userType === "shop" && isElite ? <OverlayPage /> : <Navigate to="/" replace />}
+            </ProtectedRoute>
+          } />
+          <Route path="/admin" element={
+            <ProtectedRoute>
+              {userType === "admin" ? <AdminPage /> : <Navigate to="/" replace />}
+            </ProtectedRoute>
+          } />
+          <Route path="/notifications" element={
+            <ProtectedRoute>
+              <NotificationsPage notifications={notifications} setNotifications={setNotifications} />
+            </ProtectedRoute>
+          } />
         </Routes>
       </div>
     </>
@@ -206,7 +277,7 @@ const App: React.FC = () => {
 };
 
 const AppWrapper: React.FC = () => (
-  <Router>
+  <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
     <App />
   </Router>
 );

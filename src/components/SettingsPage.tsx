@@ -13,7 +13,7 @@ const SettingsPage: React.FC = () => {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("authToken"); // Fix token key from "token" to "authToken"
         console.log("🔍 Fetching profile with token:", token);
         if (!token) {
           setError("No token found. Please log in again.");
@@ -36,7 +36,7 @@ const SettingsPage: React.FC = () => {
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken"); // Fix token key from "token" to "authToken"
       if (!token) {
         setError("No token found. Please log in again.");
         return;
@@ -59,7 +59,7 @@ const SettingsPage: React.FC = () => {
   const handleUpgradeToElite = async () => {
     if (!user || user.userType !== "shop" || user.isElite) return;
     try {
-      const token = localStorage.getItem("token");
+      const token = localStorage.getItem("authToken"); // Fix token key from "token" to "authToken"
       const response = await axios.put(
         `${process.env.REACT_APP_API_URL}/api/auth/me`,
         { isElite: true },

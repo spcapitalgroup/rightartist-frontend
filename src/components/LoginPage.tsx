@@ -8,7 +8,7 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
+  const [lastName, setLastName] = useState(""); // Fixed typo: setFirstName -> setLastName
   const [userType, setUserType] = useState<"fan" | "designer" | "shop">("fan");
   const [invite, setInvite] = useState("");
   const [error, setError] = useState("");
@@ -49,7 +49,7 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const loginUrl = `${process.env.REACT_APP_API_URL}/api/login`; // Updated to /api/login
+      const loginUrl = `${process.env.REACT_APP_API_URL}/api/auth/login`; // Correct endpoint
       console.log("📤 Sending login to:", loginUrl);
       const response = await axios.post(loginUrl, { email, password });
       const token = response.data.token;
@@ -76,7 +76,7 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
-      const signupUrl = `${process.env.REACT_APP_API_URL}/api/signup`; // Updated to /api/signup
+      const signupUrl = `${process.env.REACT_APP_API_URL}/api/auth/signup`; // Correct endpoint
       console.log("📤 Sending signup to:", signupUrl);
       console.log("📤 Payload:", { email, password, firstName, lastName, userType, invite });
       const response = await axios.post(signupUrl, {
