@@ -2,10 +2,20 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 
+// Define the Notification type based on the backend response
+interface Notification {
+  id: string;
+  userId: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface NavBarProps {
   setIsAuthenticated: (val: boolean) => void;
-  notifications: string[];
-  setNotifications: (notifications: string[]) => void;
+  notifications: Notification[]; // Updated type
+  setNotifications: (notifications: Notification[]) => void; // Updated type
   messages: string[];
   onLogoClick: () => void;
 }
@@ -97,9 +107,12 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
                   {visibleNotifications.length > 0 ? (
                     <>
                       <ul className="max-h-48 overflow-y-auto">
-                        {visibleNotifications.map((notif, index) => (
-                          <li key={index} className="p-2 text-tattoo-light text-sm border-b border-tattoo-gray last:border-b-0">
-                            {notif}
+                        {visibleNotifications.map((notif) => (
+                          <li key={notif.id} className="p-2 text-tattoo-light text-sm border-b border-tattoo-gray last:border-b-0">
+                            {notif.message} {/* Render the message property */}
+                            <p className="text-tattoo-gray text-xs">
+                              {new Date(notif.createdAt).toLocaleString()}
+                            </p>
                           </li>
                         ))}
                       </ul>

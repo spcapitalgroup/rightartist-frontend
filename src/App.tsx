@@ -14,10 +14,20 @@ import NotificationsPage from "./components/NotificationsPage";
 import PostPage from "./components/PostPage";
 import DesignsPage from "./components/DesignsPage";
 
+// Define the Notification type based on the backend response
+interface Notification {
+  id: string;
+  userId: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem("authToken"));
   const [token, setToken] = useState(localStorage.getItem("authToken"));
-  const [notifications, setNotifications] = useState<string[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]); // Updated type
   const [messages, setMessages] = useState<string[]>([]);
   const location = useLocation();
   const navigate = useNavigate();
@@ -100,10 +110,12 @@ const App: React.FC = () => {
           headers: { Authorization: `Bearer ${token}` },
         });
         console.log("🔍 Fetched queued notifications for:", userId, response.data);
-        setNotifications(response.data || []);
+        // Ensure response.data.notifications is an array
+        const fetchedNotifications = Array.isArray(response.data.notifications) ? response.data.notifications : [];
+        setNotifications(fetchedNotifications);
       } catch (error: any) {
         console.error("❌ Failed to fetch notifications:", error.response?.data?.message || error.message);
-        setNotifications([]);
+        setNotifications([]); // Ensure we set an array on error
       }
     };
 
@@ -128,8 +140,12 @@ const App: React.FC = () => {
           if (data.type === "notification" && data.userId === userId) {
             console.log("🔔 Adding notification for:", userId, "Message:", data.data);
             setNotifications((prev) => {
-              if (prev.includes(data.data)) return prev;
-              return [...prev, data.data];
+              // Ensure prev is an array
+              const currentNotifications = Array.isArray(prev) ? prev : [];
+              // Ensure data.data is a Notification object
+              const newNotification = typeof data.data === "object" && data.data.message ? data.data : { message: JSON.stringify(data.data) };
+              if (currentNotifications.some((n) => n.message === newNotification.message)) return currentNotifications;
+              return [...currentNotifications, newNotification];
             });
           }
           if (data.type === "message" && !isAdmin) {
@@ -138,8 +154,10 @@ const App: React.FC = () => {
               console.log("📩 Adding message for:", userId, "Message:", data.message);
               setMessages((prev) => {
                 const messageString = JSON.stringify(data.message);
-                if (prev.includes(messageString)) return prev;
-                return [...prev, messageString];
+                // Ensure prev is an array
+                const currentMessages = Array.isArray(prev) ? prev : [];
+                if (currentMessages.includes(messageString)) return currentMessages;
+                return [...currentMessages, messageString];
               });
             }
           }
@@ -210,12 +228,15 @@ const App: React.FC = () => {
 
   const isLoginOrSignup = location.pathname === "/login" || location.pathname === "/signup";
 
+  // Debug the notifications value before rendering NavBar
+  console.log("🔍 Rendering NavBar with notifications:", notifications);
+
   return (
     <>
       {isAuthenticated && !isLoginOrSignup && (
         <NavBar 
           setIsAuthenticated={setIsAuthenticated} 
-          notifications={[...notifications]} 
+          notifications={Array.isArray(notifications) ? [...notifications] : []} // Ensure notifications is an array
           setNotifications={setNotifications} 
           messages={messages} 
           onLogoClick={handleLogoClick}

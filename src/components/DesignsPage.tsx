@@ -28,10 +28,10 @@ const DesignsPage: React.FC = () => {
   const [soldDesigns, setSoldDesigns] = useState<Design[]>([]);
   const [error, setError] = useState("");
   const [stageUpdate, setStageUpdate] = useState<{ [key: string]: { stage: string; images: File[] } }>({});
-
   const token = localStorage.getItem("authToken");
   const decoded = token ? JSON.parse(atob(token.split(".")[1])) : {};
   const userType = decoded.userType || "fan";
+  const userId = decoded.id || "";
 
   useEffect(() => {
     const fetchDesigns = async () => {
@@ -67,8 +67,33 @@ const DesignsPage: React.FC = () => {
         console.error("❌ Fetch Designs Error:", err.response?.data || err.message);
       }
     };
+
     fetchDesigns();
-  }, [token, userType]);
+
+    // Set up WebSocket to listen for stage updates
+    const ws = new WebSocket("ws://localhost:3002");
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ userId }));
+    };
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "stage-update") {
+          console.log("🔔 Received stage-update for design:", data.designId);
+          fetchDesigns(); // Refetch designs to reflect the update
+        }
+      } catch (error) {
+        console.error("❌ WebSocket Message Error:", error);
+      }
+    };
+    ws.onclose = () => {
+      console.log("❌ WebSocket Disconnected for DesignsPage");
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [token, userType, userId]);
 
   const handleStageUpdate = async (designId: string) => {
     try {
