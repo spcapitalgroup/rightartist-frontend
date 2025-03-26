@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
+import { Link } from "react-router-dom";
 
 interface Post {
   id: string;
@@ -15,6 +16,8 @@ interface Post {
   images?: string[];
   createdAt?: string;
   comments?: Comment[];
+  shop?: { id: string; username: string }; // Added for Design Feed posts
+  client?: { id: string; username: string }; // Added for Booking Feed posts
 }
 
 interface Comment {
@@ -37,8 +40,6 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
   const [images, setImages] = useState<File[]>([]);
   const [error, setError] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [commentInputs, setCommentInputs] = useState<{ [key: string]: { content: string; price?: string } }>({});
-  const [editingComment, setEditingComment] = useState<string | null>(null);
   const [viewType, setViewType] = useState<"list" | "tiled">("list");
   const [sortByDate, setSortByDate] = useState(false);
 
@@ -46,7 +47,6 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
   const token = localStorage.getItem("authToken");
   const decoded = token ? JSON.parse(atob(token.split(".")[1])) : {};
   const userType = decoded.userType || "fan";
-  const userId = decoded.id;
   const isPaid = decoded.isPaid === true;
 
   useEffect(() => {
@@ -74,15 +74,17 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
   // Sort posts by createdAt timestamp
   useEffect(() => {
     if (sortByDate) {
-      setPosts((prevPosts) => 
+      setPosts((prevPosts) =>
         [...prevPosts].sort((a, b) => {
           return new Date(b.createdAt || "").getTime() - new Date(a.createdAt || "").getTime();
         })
       );
     } else {
-      setPosts((prevPosts) => [...prevPosts].sort((a, b) => {
-        return new Date(a.createdAt || "").getTime() - new Date(b.createdAt || "").getTime();
-      }));
+      setPosts((prevPosts) =>
+        [...prevPosts].sort((a, b) => {
+          return new Date(a.createdAt || "").getTime() - new Date(b.createdAt || "").getTime();
+        })
+      );
     }
   }, [sortByDate]);
 
@@ -108,7 +110,7 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
       }
 
       const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/posts`, formData, {
-        headers: { 
+        headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
         },
@@ -127,64 +129,17 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
     }
   };
 
-  const handleCommentSubmit = async (postId: string, parentId?: string) => {
-    try {
-      const { content, price } = commentInputs[postId] || {};
-      if (!content) return;
-
-      const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/comments/${postId}`, {
-        content,
-        parentId,
-        price: feedType === "design" ? parseFloat(price || "0") : undefined,
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setPosts(posts.map(post => post.id === postId ? {
-        ...post,
-        comments: parentId
-          ? post.comments?.map(c => c.id === parentId ? { ...c, replies: [...(c.replies || []), response.data.data] } : c)
-          : [...(post.comments || []), response.data.data],
-      } : post));
-      setCommentInputs({ ...commentInputs, [postId]: { content: "", price: "" } });
-    } catch (err: any) {
-      setError(err.response?.data?.message || "Failed to comment");
-      console.error("❌ Comment Error:", err.response?.data || err.message);
-    }
-  };
-
-  const handleCommentEdit = async (commentId: string) => {
-    try {
-      const postId = posts.find(p => p.comments?.some(c => c.id === commentId))?.id;
-      const { content, price } = commentInputs[postId!] || {};
-      if (!content) return;
-
-      const response = await axios.put(`${process.env.REACT_APP_API_URL}/api/comments/${commentId}`, {
-        content,
-        price: feedType === "design" ? parseFloat(price || "0") : undefined,
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      setPosts(posts.map(post => post.id === postId ? {
-        ...post,
-        comments: post.comments?.map(c => c.id === commentId ? response.data.data : c),
-      } : post));
-      setEditingComment(null);
-      setCommentInputs({ ...commentInputs, [postId!]: { content: "", price: "" } });
-    } catch (err: any) {
-      setError(err.response?.data?.message || "Failed to edit comment");
-      console.error("❌ Edit Comment Error:", err.response?.data || err.message);
-    }
-  };
-
-  const modalVariants = {
-    hidden: { opacity: 0, scale: 0.95 },
-    visible: { opacity: 1, scale: 1 },
+  // Helper to truncate text
+  const truncateText = (text: string, maxLength: number) => {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + "...";
   };
 
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
       className="min-h-screen pt-20 pb-8 px-4 bg-tattoo-black"
     >
       <div className="max-w-4xl mx-auto">
@@ -195,13 +150,13 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
           <div className="flex gap-4 items-center">
             <button
               onClick={() => setViewType(viewType === "list" ? "tiled" : "list")}
-              className="text-tattoo-gray text-sm border border-tattoo-gray px-3 py-1 rounded-lg hover:bg-tattoo-gray/20"
+              className="text-tattoo-gray text-sm border border-tattoo-gray px-3 py-1 rounded-lg hover:bg-tattoo-gray/20 transition duration-200"
             >
               {viewType === "list" ? "Switch to Tiled View" : "Switch to List View"}
             </button>
             <button
               onClick={() => setSortByDate(!sortByDate)}
-              className="text-tattoo-gray text-sm border border-tattoo-gray px-3 py-1 rounded-lg hover:bg-tattoo-gray/20"
+              className="text-tattoo-gray text-sm border border-tattoo-gray px-3 py-1 rounded-lg hover:bg-tattoo-gray/20 transition duration-200"
             >
               Sort by Date
             </button>
@@ -223,139 +178,70 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
           </div>
         </div>
         {error && <p className="text-tattoo-red mb-4">{error}</p>}
-        <div className={`space-y-6 ${viewType === "tiled" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" : ""}`}>
+        <div className={`space-y-6 ${viewType === "tiled" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 grid-auto-rows-[256px] items-stretch" : ""}`}>
           {posts.map((post) => {
-            const canCommentDesign = feedType === "design" && userType === "designer" && !post.comments?.some(c => c.userId === userId);
-            const canCommentBooking = feedType === "booking" && userType === "designer" && !post.comments?.some(c => c.userId === userId && !c.parentId);
+            const truncatedDescription = truncateText(post.description, 100);
+            const visibleComments = post.comments?.slice(0, 2) || []; // Show only first 2 comments
+
             return (
               <motion.div
                 key={post.id}
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
                 className={`${
                   viewType === "tiled"
-                    ? "bg-tattoo-gray/20 p-4 rounded-lg shadow-lg border border-tattoo-red/30"
-                    : "bg-tattoo-gray/20 p-6 rounded-lg shadow-lg border border-tattoo-red/30"
+                    ? "bg-tattoo-gray/20 p-4 rounded-lg shadow-lg border border-tattoo-red/30 grid grid-rows-[1fr_auto] h-[256px] box-border overflow-hidden hover:scale-105 hover:shadow-xl transition-transform duration-200"
+                    : "bg-tattoo-gray/20 p-6 rounded-lg shadow-lg border border-tattoo-red/30 grid grid-rows-[1fr_auto] h-[256px] box-border overflow-hidden hover:scale-105 hover:shadow-xl transition-transform duration-200"
                 }`}
               >
-                <div className="flex flex-col sm:flex-row items-center space-x-6">
-                  <div className="flex-1">
-                    <h2 className="text-xl font-bold text-tattoo-light">{post.title}</h2>
-                    <p className="text-tattoo-gray mt-2">{post.description}</p>
-                    <p className="text-tattoo-gray mt-1">Location: {post.location}</p>
-                    <p className="text-tattoo-gray text-sm mt-1">
-                      Posted: {post.createdAt ? formatDistanceToNow(new Date(post.createdAt), { addSuffix: true }) : "Unknown"}
-                    </p>
-                  </div>
-                  {viewType === "tiled" && post.images && post.images[0] && (
-                    <img
-                      src={`http://localhost:3000/uploads/${post.images[0]}`}
-                      alt={post.title}
-                      className="w-32 h-32 object-cover rounded-lg mt-4 sm:mt-0"
-                    />
-                  )}
-                  {viewType === "list" && post.images && post.images[0] && (
-                    <img
-                      src={`http://localhost:3000/uploads/${post.images[0]}`}
-                      alt={post.title}
-                      className="w-32 h-32 object-cover rounded-lg mt-4 sm:mt-0"
-                    />
-                  )}
-                </div>
-                <div className="mt-4">
-                  {post.comments?.map(comment => (
-                    <div key={comment.id} className={`ml-${comment.parentId ? 4 : 0} mt-2 border-l border-tattoo-gray pl-2`}>
-                      <p className="text-tattoo-light">{comment.content}</p>
-                      {comment.price && <p className="text-tattoo-gray">Price: ${comment.price.toFixed(2)}</p>}
-                      <p className="text-tattoo-gray text-sm">By: {comment.user?.username}</p>
-                      <p className="text-tattoo-gray text-sm">
-                        {comment.createdAt ? formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true }) : "Unknown"}
+                <div className="overflow-y-auto">
+                  <div className="flex flex-col sm:flex-row items-center space-x-6">
+                    <div className="flex-1">
+                      <h2 className="text-xl font-bold text-tattoo-light hover:text-tattoo-red transition-colors duration-200">{post.title}</h2>
+                      <p className="text-tattoo-gray mt-2">{truncatedDescription}</p>
+                      <p className="text-tattoo-gray mt-1">Location: {post.location}</p>
+                      <p className="text-tattoo-gray text-sm mt-1">
+                        Posted by: {feedType === "design" ? post.shop?.username : post.client?.username || "Unknown"}
                       </p>
-                      {comment.userId === userId && (
-                        <button
-                          onClick={() => setEditingComment(comment.id)}
-                          className="text-tattoo-red hover:underline text-sm"
-                        >
-                          Edit
-                        </button>
-                      )}
-                      {editingComment === comment.id ? (
-                        <div className="mt-2">
-                          <textarea
-                            value={commentInputs[post.id]?.content || comment.content}
-                            onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: { ...commentInputs[post.id], content: e.target.value } })}
-                            className="w-full p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light"
-                          />
-                          {feedType === "design" && (
-                            <input
-                              type="number"
-                              value={commentInputs[post.id]?.price || comment.price || ""}
-                              onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: { ...commentInputs[post.id], price: e.target.value } })}
-                              placeholder="Price"
-                              className="w-full p-2 mt-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light"
-                            />
-                          )}
-                          <button
-                            onClick={() => handleCommentEdit(comment.id)}
-                            className="mt-2 bg-tattoo-red text-tattoo-light px-4 py-1 rounded-lg hover:bg-tattoo-red/80"
-                          >
-                            Save
-                          </button>
-                        </div>
-                      ) : (
-                        feedType === "booking" && userType === "designer" && comment.userId === userId && (
-                          <div className="mt-2">
-                            <textarea
-                              value={commentInputs[post.id + "-sub"]?.content || ""}
-                              onChange={(e) => setCommentInputs({ ...commentInputs, [post.id + "-sub"]: { content: e.target.value } })}
-                              placeholder="Reply..."
-                              className="w-full p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light"
-                            />
-                            <button
-                              onClick={() => handleCommentSubmit(post.id, comment.id)}
-                              className="mt-2 bg-tattoo-red text-tattoo-light px-4 py-1 rounded-lg hover:bg-tattoo-red/80"
-                            >
-                              Reply
-                            </button>
-                          </div>
-                        )
-                      )}
-                      {comment.replies?.map(reply => (
-                        <div key={reply.id} className="ml-4 mt-2 border-l border-tattoo-gray pl-2">
-                          <p className="text-tattoo-light">{reply.content}</p>
-                          <p className="text-tattoo-gray text-sm">By: {reply.user?.username}</p>
-                          <p className="text-tattoo-gray text-sm">
-                            {reply.createdAt ? formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true }) : "Unknown"}
-                          </p>
-                        </div>
-                      ))}
+                      <p className="text-tattoo-gray text-sm mt-1">
+                        Posted: {post.createdAt ? formatDistanceToNow(new Date(post.createdAt), { addSuffix: true }) : "Unknown"}
+                      </p>
                     </div>
-                  ))}
-                  {(canCommentDesign || canCommentBooking) && (
-                    <div className="mt-4">
-                      <textarea
-                        value={commentInputs[post.id]?.content || ""}
-                        onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: { ...commentInputs[post.id], content: e.target.value } })}
-                        placeholder={feedType === "design" ? "Submit your design..." : "Respond to booking..."}
-                        className="w-full p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light"
+                    {(viewType === "tiled" || viewType === "list") && post.images && post.images[0] && (
+                      <img
+                        src={`http://localhost:3000/uploads/${post.images[0]}`}
+                        alt={post.title}
+                        className="w-16 h-16 object-cover rounded-lg mt-4 sm:mt-0 hover:scale-110 hover:brightness-110 transition-transform duration-200"
                       />
-                      {feedType === "design" && (
-                        <input
-                          type="number"
-                          value={commentInputs[post.id]?.price || ""}
-                          onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: { ...commentInputs[post.id], price: e.target.value } })}
-                          placeholder="Price"
-                          className="w-full p-2 mt-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light"
-                        />
-                      )}
-                      <button
-                        onClick={() => handleCommentSubmit(post.id)}
-                        className="mt-2 bg-tattoo-red text-tattoo-light px-4 py-1 rounded-lg hover:bg-tattoo-red/80"
-                      >
-                        {feedType === "design" ? "Submit Design" : "Respond"}
-                      </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                  <div className="mt-2">
+                    {visibleComments.length > 0 ? (
+                      visibleComments.map(comment => (
+                        <div key={comment.id} className="text-tattoo-gray text-sm">
+                          <p>{truncateText(comment.content, 50)}</p>
+                          {comment.price && <p>Price: ${comment.price.toFixed(2)}</p>}
+                          <p>By: {comment.user?.username}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-tattoo-gray text-sm">No comments yet.</p>
+                    )}
+                    {post.comments && post.comments.length > 2 && (
+                      <p className="text-tattoo-gray text-sm mt-1">
+                        {post.comments.length - 2} more comment{post.comments.length - 2 > 1 ? "s" : ""}...
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <Link
+                    to={`/post/${post.id}`}
+                    className="text-tattoo-red hover:underline text-sm"
+                  >
+                    See All
+                  </Link>
                 </div>
               </motion.div>
             );
@@ -365,10 +251,10 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
 
       {isModalOpen && (
         <motion.div
-          initial="hidden"
-          animate="visible"
-          exit="hidden"
-          variants={modalVariants}
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{ duration: 0.3 }}
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
         >
           <div className="bg-tattoo-gray/20 p-6 rounded-lg shadow-lg border border-tattoo-red/30 w-full max-w-md">
@@ -379,14 +265,13 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Title"
-                className="w-full p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light focus:outline-none focus:ring-2 focus:ring-tattoo-red"
-                required
+                className="w-full p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light focus:outline-none focus:ring-2 focus:ring-tattoo-red transition duration-200"
               />
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Description"
-                className="w-full p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light focus:outline-none focus:ring-2 focus:ring-tattoo-red"
+                className="w-full p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light focus:outline-none focus:ring-2 focus:ring-tattoo-red transition duration-200"
                 rows={3}
                 required
               />
@@ -395,7 +280,7 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="Location"
-                className="w-full p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light focus:outline-none focus:ring-2 focus:ring-tattoo-red"
+                className="w-full p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light focus:outline-none focus:ring-2 focus:ring-tattoo-red transition duration-200"
                 required
               />
               <input

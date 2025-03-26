@@ -41,3 +41,6 @@ body {
 .feature {
   padding: 1rem;
 }
+.grid-auto-rows-\[256px\] {
+  grid-auto-rows: minmax(256px, 256px);
+}

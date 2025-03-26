@@ -11,6 +11,7 @@ import OverlayPage from "./components/OverlayPage";
 import AdminPage from "./components/AdminPage";
 import NavBar from "./components/NavBar";
 import NotificationsPage from "./components/NotificationsPage";
+import PostPage from "./components/PostPage"; // Import the new PostPage component
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem("authToken"));
@@ -191,6 +192,7 @@ const App: React.FC = () => {
           <Route path="/signup" element={<InviteRoute><LoginPage setIsAuthenticated={setIsAuthenticated} /></InviteRoute>} />
           <Route path="/design-feed" element={<ProtectedRoute><FeedPage feedType="design" /></ProtectedRoute>} />
           <Route path="/booking-feed" element={<ProtectedRoute><FeedPage feedType="booking" /></ProtectedRoute>} />
+          <Route path="/post/:id" element={<ProtectedRoute><PostPage /></ProtectedRoute>} /> {/* New route for PostPage */}
           <Route path="/messages" element={<ProtectedRoute>{userType !== "admin" ? <MessagingPage messages={messages} /> : <Navigate to="/admin" replace />}</ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
           <Route path="/stats" element={<ProtectedRoute>{(userType === "designer" || (userType === "shop" && isPaid)) ? <StatsPage /> : <Navigate to="/" replace />}</ProtectedRoute>} />
