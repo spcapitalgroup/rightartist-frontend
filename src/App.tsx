@@ -12,6 +12,7 @@ import AdminPage from "./components/AdminPage";
 import NavBar from "./components/NavBar";
 import NotificationsPage from "./components/NotificationsPage";
 import PostPage from "./components/PostPage";
+import DesignsPage from "./components/DesignsPage";
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem("authToken"));
@@ -217,7 +218,7 @@ const App: React.FC = () => {
           notifications={[...notifications]} 
           setNotifications={setNotifications} 
           messages={messages} 
-          onLogoClick={handleLogoClick} // Pass the logout handler to NavBar
+          onLogoClick={handleLogoClick}
         />
       )}
       <div className={isAuthenticated && !isLoginOrSignup ? "pt-16" : ""}>
@@ -267,7 +268,12 @@ const App: React.FC = () => {
           } />
           <Route path="/notifications" element={
             <ProtectedRoute>
-              <NotificationsPage notifications={notifications} setNotifications={setNotifications} />
+              <NotificationsPage />
+            </ProtectedRoute>
+          } />
+          <Route path="/designs" element={
+            <ProtectedRoute>
+              {(userType === "designer" || userType === "shop") ? <DesignsPage /> : <Navigate to="/" replace />}
             </ProtectedRoute>
           } />
         </Routes>

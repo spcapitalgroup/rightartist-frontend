@@ -7,7 +7,7 @@ interface NavBarProps {
   notifications: string[];
   setNotifications: (notifications: string[]) => void;
   messages: string[];
-  onLogoClick: () => void; // Add onLogoClick prop
+  onLogoClick: () => void;
 }
 
 const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setNotifications, messages, onLogoClick }) => {
@@ -40,7 +40,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
     return !parsed.isRead;
   }).length;
 
-  console.log("🔍 NavBar rendered with notifications:", notifications); // Debug log
+  console.log("🔍 NavBar rendered with notifications:", notifications);
 
   const menuVariants = {
     closed: { opacity: 0, x: "-100%" },
@@ -66,7 +66,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
             </button>
             <Link 
               to="/"
-              onClick={onLogoClick} // Use the onLogoClick prop passed from App.tsx
+              onClick={onLogoClick}
               className="flex-shrink-0 flex items-center"
             >
               <span className="text-tattoo-red text-2xl font-bold tracking-tight">RightArtist</span>
@@ -177,6 +177,15 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
                   Booking Feed
                 </Link>
               </>
+            )}
+            {(userRole === "ArtDesigner" || userRole === "Shop") && (
+              <Link
+                to="/designs"
+                onClick={toggleMenu}
+                className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+              >
+                Designs
+              </Link>
             )}
             <Link
               to="/messages"

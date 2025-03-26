@@ -24,6 +24,11 @@ const StatsPage: React.FC = () => {
           return;
         }
 
+        if (userType !== "designer" && userType !== "shop") {
+          setError("Stats are only available for designers and shop users");
+          return;
+        }
+
         const endpoint = userType === "designer" ? "designer" : "shop";
         const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/stats/${endpoint}`, {
           headers: { Authorization: `Bearer ${token}` },

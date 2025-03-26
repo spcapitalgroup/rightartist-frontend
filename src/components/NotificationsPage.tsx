@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { motion } from "framer-motion";
+import { formatDistanceToNow } from "date-fns";
 
 interface Notification {
   id: string;
@@ -9,43 +10,53 @@ interface Notification {
   createdAt: string;
 }
 
-interface NotificationsPageProps {
-  notifications: string[];
-  setNotifications: (notifications: string[]) => void;
-}
-
-const NotificationsPage: React.FC<NotificationsPageProps> = ({ notifications, setNotifications }) => {
+const NotificationsPage: React.FC = () => {
   const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
   const [error, setError] = useState("");
+  const token = localStorage.getItem("authToken");
 
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
+        if (!token) {
+          setError("Please log in to view notifications");
+          return;
+        }
+
         const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/notifications`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+          headers: { Authorization: `Bearer ${token}` },
         });
-        setAllNotifications(response.data.notifications || []);
+        if (response.data.success) {
+          setAllNotifications(response.data.notifications || []);
+        } else {
+          setError("Failed to load notifications");
+        }
       } catch (err: any) {
+        console.error("❌ Failed to fetch notifications:", err.response?.data || err.message);
         setError(err.response?.data?.message || "Failed to load notifications");
       }
     };
     fetchNotifications();
-  }, []);
+  }, [token]);
 
   const markAsRead = async () => {
     try {
-      await axios.put(`${process.env.REACT_APP_API_URL}/api/notifications/mark-read`, {}, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      const response = await axios.put(`${process.env.REACT_APP_API_URL}/api/notifications/mark-read`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
       });
-      setAllNotifications(allNotifications.map(n => ({ ...n, isRead: true })));
+      if (response.data.success) {
+        setAllNotifications(allNotifications.map(n => ({ ...n, isRead: true })));
+      } else {
+        setError(response.data.message || "Failed to mark notifications as read");
+      }
     } catch (err: any) {
+      console.error("❌ Failed to mark notifications as read:", err.response?.data || err.message);
       setError(err.response?.data?.message || "Failed to mark notifications as read");
     }
   };
 
   const clearAll = () => {
     setAllNotifications([]);
-    setNotifications([]);
   };
 
   return (
@@ -81,7 +92,7 @@ const NotificationsPage: React.FC<NotificationsPageProps> = ({ notifications, se
                 >
                   {notif.message}
                   <p className="text-tattoo-gray text-sm mt-1">
-                    {new Date(notif.createdAt).toLocaleString()}
+                    {formatDistanceToNow(new Date(notif.createdAt), { addSuffix: true })}
                   </p>
                 </li>
               ))}

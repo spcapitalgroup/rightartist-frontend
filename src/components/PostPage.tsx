@@ -13,9 +13,9 @@ interface Post {
   status?: "open" | "closed";
   clientId?: string | null;
   shopId?: string | null;
-  images?: string[];
+  images: string[];
   createdAt?: string;
-  comments?: Comment[];
+  comments: Comment[];
 }
 
 interface Comment {
@@ -24,24 +24,25 @@ interface Comment {
   userId: string;
   postId: string;
   parentId: string | null;
-  price?: number;
+  price?: number | string;
+  images: string[];
   user?: { id: string; username: string };
   replies?: Comment[];
   createdAt?: string;
 }
 
 const PostPage: React.FC = () => {
-  const { id } = useParams<{ id: string }>(); // Get post ID from URL
+  const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [post, setPost] = useState<Post | null>(null);
   const [error, setError] = useState("");
-  const [commentInputs, setCommentInputs] = useState<{ [key: string]: { content: string; price?: string } }>({});
+  const [commentInputs, setCommentInputs] = useState<{ [key: string]: { content: string; price?: string; images?: File[] } }>({});
   const [editingComment, setEditingComment] = useState<string | null>(null);
 
   const token = localStorage.getItem("authToken");
   const decoded = token ? JSON.parse(atob(token.split(".")[1])) : {};
   const userType = decoded.userType || "fan";
-  const userId = decoded.id;
+  const userId = decoded.id || "";
 
   useEffect(() => {
     const fetchPost = async () => {
@@ -53,7 +54,7 @@ const PostPage: React.FC = () => {
 
         const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/feed/`, {
           headers: { Authorization: `Bearer ${token}` },
-          params: { postId: id }, // Assuming the backend supports fetching a single post by ID
+          params: { postId: id },
         });
 
         const posts = response.data.posts || [];
@@ -62,7 +63,9 @@ const PostPage: React.FC = () => {
           return;
         }
 
-        setPost(posts[0]);
+        const fetchedPost = posts[0];
+        console.log("🔍 Fetched post:", fetchedPost); // Debug log
+        setPost(fetchedPost);
       } catch (err: any) {
         console.error("❌ Post Fetch Error:", err.response?.data || err.message);
         setError(err.response?.data?.message || "Failed to load post");
@@ -73,15 +76,27 @@ const PostPage: React.FC = () => {
 
   const handleCommentSubmit = async (postId: string, parentId?: string) => {
     try {
-      const { content, price } = commentInputs[postId] || {};
+      const { content, price, images } = commentInputs[postId] || {};
       if (!content) return;
 
-      const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/comments/${postId}`, {
-        content,
-        parentId,
-        price: post?.feedType === "design" ? parseFloat(price || "0") : undefined,
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
+      const formData = new FormData();
+      formData.append("content", content);
+      if (parentId) formData.append("parentId", parentId);
+      if (post?.feedType === "design") formData.append("price", price || "0");
+      if (images && images.length > 0) {
+        images.forEach((image) => formData.append("images", image));
+      }
+
+      console.log("📤 Submitting comment with payload:");
+      for (let [key, value] of formData.entries()) {
+        console.log(`${key}: ${value instanceof File ? `${value.name} (${value.size} bytes)` : value}`);
+      }
+
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/comments/${postId}`, formData, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
       });
 
       setPost((prevPost) =>
@@ -89,12 +104,12 @@ const PostPage: React.FC = () => {
           ? {
               ...prevPost,
               comments: parentId
-                ? prevPost.comments?.map(c => c.id === parentId ? { ...c, replies: [...(c.replies || []), response.data.data] } : c)
-                : [...(prevPost.comments || []), response.data.data],
+                ? prevPost.comments.map(c => c.id === parentId ? { ...c, replies: [...(c.replies || []), response.data.data] } : c)
+                : [...prevPost.comments, response.data.data],
             }
           : prevPost
       );
-      setCommentInputs({ ...commentInputs, [postId]: { content: "", price: "" } });
+      setCommentInputs({ ...commentInputs, [postId]: { content: "", price: "", images: [] } });
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to comment");
       console.error("❌ Comment Error:", err.response?.data || err.message);
@@ -103,13 +118,14 @@ const PostPage: React.FC = () => {
 
   const handleCommentEdit = async (commentId: string) => {
     try {
-      const postId = post?.id;
-      const { content, price } = commentInputs[postId!] || {};
+      if (!post) return;
+      const postId = post.id;
+      const { content, price } = commentInputs[postId] || {};
       if (!content) return;
 
       const response = await axios.put(`${process.env.REACT_APP_API_URL}/api/comments/${commentId}`, {
         content,
-        price: post?.feedType === "design" ? parseFloat(price || "0") : undefined,
+        price: post.feedType === "design" ? parseFloat(price || "0") : undefined,
       }, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -118,15 +134,29 @@ const PostPage: React.FC = () => {
         prevPost
           ? {
               ...prevPost,
-              comments: prevPost.comments?.map(c => c.id === commentId ? response.data.data : c),
+              comments: prevPost.comments.map(c => c.id === commentId ? response.data.data : c),
             }
           : prevPost
       );
       setEditingComment(null);
-      setCommentInputs({ ...commentInputs, [postId!]: { content: "", price: "" } });
+      setCommentInputs({ ...commentInputs, [postId]: { content: "", price: "", images: [] } });
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to edit comment");
       console.error("❌ Edit Comment Error:", err.response?.data || err.message);
+    }
+  };
+
+  const handleAcceptDesign = async (commentId: string) => {
+    try {
+      const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/designs/accept/${commentId}`, {}, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log("✅ Design accepted:", response.data);
+      setError("");
+      navigate("/designs");
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to accept design");
+      console.error("❌ Accept Design Error:", err.response?.data || err.message);
     }
   };
 
@@ -154,8 +184,9 @@ const PostPage: React.FC = () => {
     );
   }
 
-  const canCommentDesign = post.feedType === "design" && userType === "designer" && !post.comments?.some(c => c.userId === userId);
-  const canCommentBooking = post.feedType === "booking" && userType === "designer" && !post.comments?.some(c => c.userId === userId && !c.parentId);
+  const canCommentDesign = post.feedType === "design" && userType === "designer" && !post.comments.some(c => c.userId === userId);
+  const canCommentBooking = post.feedType === "booking" && userType === "designer" && !post.comments.some(c => c.userId === userId && !c.parentId);
+  const canAcceptDesign = post.feedType === "design" && userType === "shop" && post.shopId === userId;
 
   return (
     <motion.div
@@ -177,13 +208,13 @@ const PostPage: React.FC = () => {
           <p className="text-tattoo-gray text-sm mt-1">
             Posted: {post.createdAt ? formatDistanceToNow(new Date(post.createdAt), { addSuffix: true }) : "Unknown"}
           </p>
-          {post.images && post.images.length > 0 && (
+          {post.images.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
               {post.images.map((image, index) => (
                 <img
                   key={index}
                   src={`http://localhost:3000/uploads/${image}`}
-                  alt={`${post.title} image ${index + 1}`}
+                  alt={`${post.title} ${index + 1}`}
                   className="w-32 h-32 object-cover rounded-lg"
                 />
               ))}
@@ -191,11 +222,27 @@ const PostPage: React.FC = () => {
           )}
           <div className="mt-6">
             <h3 className="text-xl font-bold text-tattoo-red mb-2">Comments</h3>
-            {post.comments && post.comments.length > 0 ? (
+            {post.comments.length > 0 ? (
               post.comments.map(comment => (
                 <div key={comment.id} className={`ml-${comment.parentId ? 4 : 0} mt-2 border-l border-tattoo-gray pl-2`}>
                   <p className="text-tattoo-light">{comment.content}</p>
-                  {comment.price && <p className="text-tattoo-gray">Price: ${comment.price.toFixed(2)}</p>}
+                  {comment.price !== undefined && (
+                    <p className="text-tattoo-gray">
+                      Price: ${Number(comment.price).toFixed(2)}
+                    </p>
+                  )}
+                  {comment.images.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {comment.images.map((image, index) => (
+                        <img
+                          key={index}
+                          src={`http://localhost:3000/uploads/${image}`}
+                          alt={`Comment ${index + 1}`}
+                          className="w-24 h-24 object-cover rounded-lg"
+                        />
+                      ))}
+                    </div>
+                  )}
                   <p className="text-tattoo-gray text-sm">By: {comment.user?.username}</p>
                   <p className="text-tattoo-gray text-sm">
                     {comment.createdAt ? formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true }) : "Unknown"}
@@ -203,9 +250,17 @@ const PostPage: React.FC = () => {
                   {comment.userId === userId && (
                     <button
                       onClick={() => setEditingComment(comment.id)}
-                      className="text-tattoo-red hover:underline text-sm"
+                      className="text-tattoo-red hover:underline text-sm mr-2"
                     >
                       Edit
+                    </button>
+                  )}
+                  {canAcceptDesign && (
+                    <button
+                      onClick={() => handleAcceptDesign(comment.id)}
+                      className="text-tattoo-red hover:underline text-sm"
+                    >
+                      Accept Design
                     </button>
                   )}
                   {editingComment === comment.id ? (
@@ -252,6 +307,18 @@ const PostPage: React.FC = () => {
                   {comment.replies?.map(reply => (
                     <div key={reply.id} className="ml-4 mt-2 border-l border-tattoo-gray pl-2">
                       <p className="text-tattoo-light">{reply.content}</p>
+                      {reply.images.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {reply.images.map((image, index) => (
+                            <img
+                              key={index}
+                              src={`http://localhost:3000/uploads/${image}`}
+                              alt={`Reply ${index + 1}`}
+                              className="w-24 h-24 object-cover rounded-lg"
+                            />
+                          ))}
+                        </div>
+                      )}
                       <p className="text-tattoo-gray text-sm">By: {reply.user?.username}</p>
                       <p className="text-tattoo-gray text-sm">
                         {reply.createdAt ? formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true }) : "Unknown"}
@@ -271,14 +338,33 @@ const PostPage: React.FC = () => {
                   placeholder={post.feedType === "design" ? "Submit your design..." : "Respond to booking..."}
                   className="w-full p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light"
                 />
-                {post.feedType === "design" && (
-                  <input
-                    type="number"
-                    value={commentInputs[post.id]?.price || ""}
-                    onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: { ...commentInputs[post.id], price: e.target.value } })}
-                    placeholder="Price"
-                    className="w-full p-2 mt-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light"
-                  />
+                {post.feedType === "design" && userType === "designer" && (
+                  <>
+                    <input
+                      type="number"
+                      value={commentInputs[post.id]?.price || ""}
+                      onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: { ...commentInputs[post.id], price: e.target.value } })}
+                      placeholder="Price"
+                      className="w-full p-2 mt-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light"
+                    />
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/jpeg,image/jpg,image/png"
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          setCommentInputs({ 
+                            ...commentInputs, 
+                            [post.id]: { 
+                              ...commentInputs[post.id], 
+                              images: Array.from(e.target.files).slice(0, 5) 
+                            } 
+                          });
+                        }
+                      }}
+                      className="w-full mt-2 text-tattoo-light"
+                    />
+                  </>
                 )}
                 <button
                   onClick={() => handleCommentSubmit(post.id)}

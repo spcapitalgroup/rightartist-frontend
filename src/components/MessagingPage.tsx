@@ -11,6 +11,7 @@ interface Message {
   content: string;
   createdAt: string;
   isRead: boolean;
+  images: string[]; // Ensure images is always an array
   sender?: { username: string };
 }
 
@@ -31,8 +32,9 @@ const MessagingPage: React.FC<MessagingPageProps> = memo(({ messages }) => {
   });
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
+  const [newImages, setNewImages] = useState<File[]>([]);
   const [error, setError] = useState("");
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("authToken");
   const userId = token ? JSON.parse(atob(token.split(".")[1])).id : "";
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -42,6 +44,10 @@ const MessagingPage: React.FC<MessagingPageProps> = memo(({ messages }) => {
     console.log("🔍 MessagingPage rendered for user:", userId, "Selected:", selectedUser?.id);
     const fetchUsers = async () => {
       try {
+        if (!token) {
+          setError("Please log in to access messages");
+          return;
+        }
         const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/messages/users`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -146,16 +152,32 @@ const MessagingPage: React.FC<MessagingPageProps> = memo(({ messages }) => {
   const handleSendMessage = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!selectedUser || !newMessage.trim() || isSendingRef.current) return;
+      if (!selectedUser || (!newMessage.trim() && (!newImages || newImages.length === 0)) || isSendingRef.current) return;
 
       isSendingRef.current = true;
       console.log("🔍 Before send - selectedUser:", selectedUser);
       try {
-        console.log("🔍 Sending message to:", selectedUser.id);
+        const formData = new FormData();
+        formData.append("receiverId", selectedUser.id);
+        formData.append("content", newMessage);
+        if (newImages && newImages.length > 0) {
+          newImages.forEach((image) => formData.append("images", image));
+        }
+
+        console.log("📤 Sending message with payload:");
+        for (let [key, value] of formData.entries()) {
+          console.log(`${key}: ${value instanceof File ? `${value.name} (${value.size} bytes)` : value}`);
+        }
+
         const response = await axios.post(
           `${process.env.REACT_APP_API_URL}/api/messages/send`,
-          { receiverId: selectedUser.id, content: newMessage },
-          { headers: { Authorization: `Bearer ${token}` } }
+          formData,
+          { 
+            headers: { 
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "multipart/form-data",
+            } 
+          }
         );
         setChatMessages((prev) => {
           const exists = prev.some((msg) => msg.id === response.data.data.id);
@@ -166,6 +188,7 @@ const MessagingPage: React.FC<MessagingPageProps> = memo(({ messages }) => {
           return updated;
         });
         setNewMessage("");
+        setNewImages([]);
         setError("");
         console.log("🔍 After send - selectedUser:", selectedUser);
         if (messagesEndRef.current) {
@@ -181,7 +204,7 @@ const MessagingPage: React.FC<MessagingPageProps> = memo(({ messages }) => {
         }
       }
     },
-    [selectedUser, newMessage, token, navigate]
+    [selectedUser, newMessage, newImages, token, navigate]
   );
 
   const filteredMessages = selectedUser
@@ -243,6 +266,18 @@ const MessagingPage: React.FC<MessagingPageProps> = memo(({ messages }) => {
                   } max-w-xs`}
                 >
                   <p className="text-tattoo-light">{msg.content}</p>
+                  {msg.images && msg.images.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {msg.images.map((image, index) => (
+                        <img
+                          key={index}
+                          src={`http://localhost:3000/uploads/${image}`}
+                          alt={`Message image ${index + 1}`}
+                          className="w-24 h-24 object-cover rounded-lg"
+                        />
+                      ))}
+                    </div>
+                  )}
                   <p className="text-tattoo-gray text-xs mt-1">
                     {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
                   </p>
@@ -250,21 +285,34 @@ const MessagingPage: React.FC<MessagingPageProps> = memo(({ messages }) => {
               ))}
               <div ref={messagesEndRef} />
             </div>
-            <form onSubmit={handleSendMessage} className="mt-4 flex">
+            <form onSubmit={handleSendMessage} className="mt-4 flex flex-col">
+              <div className="flex">
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Type a message..."
+                  className="flex-1 p-2 bg-tattoo-black border border-tattoo-gray rounded-l-lg text-tattoo-light focus:outline-none focus:ring-2 focus:ring-tattoo-red"
+                />
+                <button
+                  type="submit"
+                  disabled={isSendingRef.current}
+                  className="p-2 bg-tattoo-red text-tattoo-light rounded-r-lg hover:bg-tattoo-red/80 transition duration-200"
+                >
+                  Send
+                </button>
+              </div>
               <input
-                type="text"
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                placeholder="Type a message..."
-                className="flex-1 p-2 bg-tattoo-black border border-tattoo-gray rounded-l-lg text-tattoo-light focus:outline-none focus:ring-2 focus:ring-tattoo-red"
+                type="file"
+                multiple
+                accept="image/jpeg,image/jpg,image/png"
+                onChange={(e) => {
+                  if (e.target.files) {
+                    setNewImages(Array.from(e.target.files).slice(0, 5));
+                  }
+                }}
+                className="mt-2 text-tattoo-light"
               />
-              <button
-                type="submit"
-                disabled={isSendingRef.current}
-                className="p-2 bg-tattoo-red text-tattoo-light rounded-r-lg hover:bg-tattoo-red/80 transition duration-200"
-              >
-                Send
-              </button>
             </form>
           </>
         ) : (
