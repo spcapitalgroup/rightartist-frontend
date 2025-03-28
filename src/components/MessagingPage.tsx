@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
+import api from "../api/axios"; // Updated to use the custom axios instance
 import { motion } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
 
@@ -59,14 +59,13 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
   const userId = decoded.id || "";
   const userType = decoded.userType || "fan";
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectAttempts = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/messages/users`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const response = await api.get("/api/messages/users");
         setUsers(response.data.users || []);
       } catch (err: any) {
         setError(err.response?.data?.message || "Failed to load users");
@@ -76,12 +75,8 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
 
     const fetchMessages = async () => {
       try {
-        const inboxResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/messages/inbox`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const sentResponse = await axios.get(`${process.env.REACT_APP_API_URL}/api/messages/sent`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const inboxResponse = await api.get("/api/messages/inbox");
+        const sentResponse = await api.get("/api/messages/sent");
         const allMessages = [...inboxResponse.data.messages, ...sentResponse.data.messages].sort(
           (a: Message, b: Message) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         );
@@ -97,30 +92,96 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
       fetchMessages();
     }
 
-    // Set up WebSocket
-    wsRef.current = new WebSocket("ws://localhost:3002");
-    wsRef.current.onopen = () => {
-      wsRef.current?.send(JSON.stringify({ userId }));
-    };
-    wsRef.current.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log("🔍 WebSocket message received for:", userId, "Data:", data);
-        if (data.type === "message") {
-          setMessages((prev) => [...prev, data.message].sort(
-            (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-          ));
-        }
-      } catch (error) {
-        console.error("❌ WebSocket Message Error:", error);
+    // Set up WebSocket with reconnection logic
+    const connectWebSocket = () => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        console.log("🔍 WebSocket already connected for:", userId);
+        return;
       }
-    };
-    wsRef.current.onclose = () => {
-      console.log("❌ WebSocket Disconnected for MessagingPage");
+
+      // Add a small delay to ensure the server is ready
+      setTimeout(() => {
+        wsRef.current = new WebSocket("ws://localhost:3002");
+        console.log("🔌 Attempting WebSocket connection for:", userId);
+
+        wsRef.current.onopen = () => {
+          console.log("🔌 Connected to WebSocket for:", userId);
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            try {
+              wsRef.current.send(JSON.stringify({ userId }));
+              reconnectAttempts.current = 0; // Reset reconnection attempts on success
+            } catch (err) {
+              console.error("❌ Failed to send userId on WebSocket open:", err);
+            }
+          }
+        };
+
+        wsRef.current.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log("🔍 WebSocket message received for:", userId, "Data:", data);
+            if (data.type === "message") {
+              setMessages((prev) => [...prev, data.message].sort(
+                (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+              ));
+            }
+          } catch (error) {
+            console.error("❌ WebSocket Message Error:", error);
+          }
+        };
+
+        wsRef.current.onclose = () => {
+          console.log("❌ WebSocket Disconnected for MessagingPage:", userId, "—Reconnecting...");
+          if (reconnectAttempts.current < 5) {
+            setTimeout(connectWebSocket, 1000 * Math.pow(2, reconnectAttempts.current));
+            reconnectAttempts.current += 1;
+            console.log("🔍 Reconnect attempt:", reconnectAttempts.current);
+          } else {
+            setError("Failed to connect to WebSocket after multiple attempts.");
+          }
+        };
+
+        wsRef.current.onerror = (err) => {
+          console.error("❌ WebSocket Error for:", userId, err);
+        };
+      }, 500); // 500ms delay to ensure server readiness
     };
 
+    if (token && userId) {
+      connectWebSocket();
+    }
+
+    // Heartbeat to keep the connection alive
+    const heartbeat = setInterval(() => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        try {
+          wsRef.current.send(JSON.stringify({ type: "heartbeat", userId }));
+          console.log("🏓 Sent heartbeat to WebSocket for:", userId);
+        } catch (err) {
+          console.error("❌ Failed to send heartbeat:", err);
+        }
+      } else {
+        console.log("⚠️ WebSocket not open for:", userId, "State:", wsRef.current?.readyState, "—reconnecting...");
+        connectWebSocket();
+      }
+    }, 1000);
+
+    // Handle window focus to reconnect if needed
+    const handleFocus = () => {
+      if (wsRef.current && wsRef.current.readyState !== WebSocket.OPEN) {
+        console.log("🔍 Window focused—reconnecting WebSocket for:", userId);
+        connectWebSocket();
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+
     return () => {
-      wsRef.current?.close();
+      console.log("🛑 Cleaning up WebSocket for MessagingPage");
+      clearInterval(heartbeat);
+      window.removeEventListener("focus", handleFocus);
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
+      }
     };
   }, [token, userId]);
 
@@ -128,13 +189,8 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
     const fetchDesigns = async () => {
       if (!selectedUser) return;
       try {
-        const response = await axios.get(
-          `${process.env.REACT_APP_API_URL}/api/designs/conversation/${
-            userType === "designer" ? userId : selectedUser.id
-          }/${userType === "shop" ? userId : selectedUser.id}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
+        const response = await api.get(
+          `/api/designs/conversation/${userType === "designer" ? userId : selectedUser.id}/${userType === "shop" ? userId : selectedUser.id}`
         );
         setDesigns(response.data.designs || []);
       } catch (err: any) {
@@ -144,7 +200,7 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
     };
 
     fetchDesigns();
-  }, [selectedUser, token, userId, userType]);
+  }, [selectedUser, userId, userType]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -178,9 +234,8 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
       if (selectedStage) formData.append("stage", selectedStage);
       images.forEach((image) => formData.append("images", image));
 
-      const response = await axios.post(`${process.env.REACT_APP_API_URL}/api/messages/send`, formData, {
+      const response = await api.post("/api/messages/send", formData, {
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
         },
       });
@@ -201,11 +256,7 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
 
   const handleMarkAsRead = async (messageId: string) => {
     try {
-      await axios.post(
-        `${process.env.REACT_APP_API_URL}/api/messages/mark-read`,
-        { messageId },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.post("/api/messages/mark-read", { messageId });
       setMessages((prev) =>
         prev.map((msg) => (msg.id === messageId ? { ...msg, isRead: true } : msg))
       );
@@ -219,190 +270,200 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="min-h-screen pt-20 pb-8 px-4 bg-tattoo-black"
+      transition={{ duration: 0.5 }}
+      className="min-h-screen pt-20 pb-8 px-4 bg-dark-black text-light-white"
     >
-      <div className="max-w-6xl mx-auto flex">
-        {/* Conversations List */}
-        <div className="w-1/3 bg-tattoo-gray/20 p-4 rounded-lg mr-4">
-          <h2 className="text-2xl font-bold text-tattoo-red mb-4">Conversations</h2>
-          {conversations.length > 0 ? (
-            <ul className="space-y-2">
-              {conversations.map(({ user, lastMessage }) => (
-                <li
-                  key={user.id}
-                  onClick={() => setSelectedUser(user)}
-                  className={`p-2 rounded-lg cursor-pointer ${
-                    selectedUser?.id === user.id ? "bg-tattoo-red text-tattoo-light" : "bg-tattoo-gray text-tattoo-light hover:bg-tattoo-gray/80"
-                  }`}
-                >
-                  <p className="font-bold">{user.username}</p>
-                  <p className="text-sm truncate">{lastMessage.content}</p>
-                  <p className="text-xs">{formatDistanceToNow(new Date(lastMessage.createdAt), { addSuffix: true })}</p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-tattoo-gray">No conversations yet.</p>
-          )}
-        </div>
-
-        {/* Chat Area */}
-        <div className="w-2/3 bg-tattoo-gray/20 p-4 rounded-lg">
-          {selectedUser ? (
-            <>
-              <h2 className="text-2xl font-bold text-tattoo-red mb-4">Chat with {selectedUser.username}</h2>
-              {error && <p className="text-tattoo-red mb-4">{error}</p>}
-
-              {/* Designs Section */}
-              {designs.length > 0 && (
-                <div className="mb-4 p-4 bg-tattoo-black rounded-lg">
-                  <h3 className="text-xl font-bold text-tattoo-light mb-2">Related Designs</h3>
-                  <div className="space-y-4">
-                    {designs.map((design) => (
-                      <div key={design.id} className="border border-tattoo-red/30 p-2 rounded-lg">
-                        <p className="text-tattoo-light">Design: {design.Post.title}</p>
-                        <p className="text-tattoo-gray">Stage: {design.stage.replace("_", " ").toUpperCase()}</p>
-                        <p className="text-tattoo-gray">Price: ${design.price.toFixed(2)}</p>
-                        {design.images.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {design.images.map((image, index) => (
-                              <img
-                                key={index}
-                                src={`http://localhost:3000/uploads/${image}`}
-                                alt={`Design ${index + 1}`}
-                                className="w-24 h-24 object-cover rounded-lg"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                  console.log(`Failed to load image: ${image}`);
-                                }}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Messages */}
-              <div className="h-96 overflow-y-auto mb-4 p-4 bg-tattoo-black rounded-lg">
-                {messages
-                  .filter(
-                    (msg) =>
-                      (msg.senderId === userId && msg.receiverId === selectedUser.id) ||
-                      (msg.senderId === selectedUser.id && msg.receiverId === userId)
-                  )
-                  .map((msg) => (
-                    <div
-                      key={msg.id}
-                      className={`mb-4 ${
-                        msg.senderId === userId ? "text-right" : "text-left"
+      <div className="max-w-6xl mx-auto">
+        <div className="bg-dark-gray p-6 rounded-sm shadow-sm border border-accent-gray">
+          <h1 className="text-3xl font-semibold text-light-white mb-6">Messages</h1>
+          {error && <p className="text-red-500 mb-6">{error}</p>}
+          <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+            {/* Conversations List */}
+            <div className="w-full sm:w-1/3">
+              <h2 className="text-xl font-medium text-text-gray mb-4">Conversations</h2>
+              {conversations.length > 0 ? (
+                <ul className="space-y-2">
+                  {conversations.map(({ user, lastMessage }) => (
+                    <li
+                      key={user.id}
+                      onClick={() => setSelectedUser(user)}
+                      className={`p-2 rounded-sm border border-accent-gray cursor-pointer transition duration-200 ${
+                        selectedUser?.id === user.id ? "bg-dark-black" : "bg-dark-gray hover:bg-dark-black"
                       }`}
                     >
-                      <p className={`inline-block p-2 rounded-lg ${
-                        msg.senderId === userId ? "bg-tattoo-red text-tattoo-light" : "bg-tattoo-gray text-tattoo-light"
-                      }`}>
-                        {msg.content}
-                        {msg.stage && (
-                          <span className="block text-sm italic">
-                            Stage Update: {msg.stage.replace("_", " ").toUpperCase()}
-                          </span>
-                        )}
+                      <p className="font-semibold text-light-white">{user.username}</p>
+                      <p className="text-text-gray text-sm truncate">{lastMessage.content}</p>
+                      <p className="text-text-gray text-xs">
+                        {formatDistanceToNow(new Date(lastMessage.createdAt), { addSuffix: true })}
                       </p>
-                      {msg.images.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {msg.images.map((image, index) => (
-                            <img
-                              key={index}
-                              src={`http://localhost:3000/uploads/${image}`}
-                              alt={`Message ${index + 1}`}
-                              className="w-24 h-24 object-cover rounded-lg"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                                console.log(`Failed to load image: ${image}`);
-                              }}
-                            />
-                          ))}
-                        </div>
-                      )}
-                      <p className="text-tattoo-gray text-sm mt-1">
-                        {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
-                      </p>
-                      {msg.senderId !== userId && !msg.isRead && (
-                        <button
-                          onClick={() => handleMarkAsRead(msg.id)}
-                          className="text-tattoo-red text-sm hover:underline"
-                        >
-                          Mark as Read
-                        </button>
-                      )}
-                    </div>
+                    </li>
                   ))}
-                <div ref={messagesEndRef} />
-              </div>
+                </ul>
+              ) : (
+                <p className="text-text-gray">No conversations yet.</p>
+              )}
+            </div>
 
-              {/* Message Input */}
-              <div className="flex flex-col space-y-2">
-                {userType === "designer" && designs.length > 0 && (
-                  <div className="flex space-x-2">
-                    <select
-                      value={selectedDesign}
-                      onChange={(e) => setSelectedDesign(e.target.value)}
-                      className="p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light"
-                    >
-                      <option value="">Select Design (Optional)</option>
-                      {designs.map((design) => (
-                        <option key={design.id} value={design.id}>
-                          {design.Post.title}
-                        </option>
+            {/* Chat Area */}
+            <div className="w-full sm:w-2/3">
+              {selectedUser ? (
+                <>
+                  <h2 className="text-xl font-medium text-text-gray mb-4">Chat with {selectedUser.username}</h2>
+
+                  {/* Designs Section */}
+                  {designs.length > 0 && (
+                    <div className="mb-4 p-4 bg-dark-black rounded-sm border border-accent-gray">
+                      <h3 className="text-lg font-medium text-text-gray mb-2">Related Designs</h3>
+                      <div className="space-y-4">
+                        {designs.map((design) => (
+                          <div key={design.id} className="border border-accent-gray p-2 rounded-sm">
+                            <p className="text-light-white">Design: {design.Post.title}</p>
+                            <p className="text-text-gray text-sm">
+                              Stage: {design.stage.replace("_", " ").toUpperCase()}
+                            </p>
+                            <p className="text-text-gray text-sm">Price: ${design.price.toFixed(2)}</p>
+                            {design.images.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {design.images.map((image, index) => (
+                                  <img
+                                    key={index}
+                                    src={`http://localhost:3000/uploads/${image}`}
+                                    alt={`Design ${index + 1}`}
+                                    className="w-24 h-24 object-cover rounded-sm"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = "none";
+                                      console.log(`Failed to load image: ${image}`);
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Messages */}
+                  <div className="h-96 overflow-y-auto mb-4 p-4 bg-dark-black rounded-sm border border-accent-gray">
+                    {messages
+                      .filter(
+                        (msg) =>
+                          (msg.senderId === userId && msg.receiverId === selectedUser.id) ||
+                          (msg.senderId === selectedUser.id && msg.receiverId === userId)
+                      )
+                      .map((msg) => (
+                        <div
+                          key={msg.id}
+                          className={`mb-4 ${msg.senderId === userId ? "text-right" : "text-left"}`}
+                        >
+                          <div
+                            className={`inline-block p-2 rounded-sm max-w-[75%] ${
+                              msg.senderId === userId ? "bg-accent-gray" : "bg-dark-gray"
+                            }`}
+                          >
+                            <p className="text-light-white">{msg.content}</p>
+                            {msg.stage && (
+                              <span className="block text-sm italic text-text-gray">
+                                Stage Update: {msg.stage.replace("_", " ").toUpperCase()}
+                              </span>
+                            )}
+                            {msg.images.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {msg.images.map((image, index) => (
+                                  <img
+                                    key={index}
+                                    src={`http://localhost:3000/uploads/${image}`}
+                                    alt={`Message ${index + 1}`}
+                                    className="w-24 h-24 object-cover rounded-sm"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = "none";
+                                      console.log(`Failed to load image: ${image}`);
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <p className="text-text-gray text-xs mt-1">
+                            {formatDistanceToNow(new Date(msg.createdAt), { addSuffix: true })}
+                          </p>
+                          {msg.senderId !== userId && !msg.isRead && (
+                            <button
+                              onClick={() => handleMarkAsRead(msg.id)}
+                              className="text-accent-red hover:underline text-sm"
+                            >
+                              Mark as Read
+                            </button>
+                          )}
+                        </div>
                       ))}
-                    </select>
-                    {selectedDesign && (
-                      <select
-                        value={selectedStage}
-                        onChange={(e) => setSelectedStage(e.target.value)}
-                        className="p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light"
-                      >
-                        <option value="">Select Stage (Optional)</option>
-                        <option value="initial_sketch">Initial Sketch</option>
-                        <option value="revision_1">Revision 1</option>
-                        <option value="revision_2">Revision 2</option>
-                        <option value="revision_3">Revision 3</option>
-                        <option value="final_draft">Final Draft</option>
-                        <option value="final_design">Final Design</option>
-                      </select>
-                    )}
+                    <div ref={messagesEndRef} />
                   </div>
-                )}
-                <textarea
-                  value={newMessage}
-                  onChange={(e) => setNewMessage(e.target.value)}
-                  placeholder="Type your message..."
-                  className="p-2 bg-tattoo-black border border-tattoo-gray rounded-lg text-tattoo-light w-full"
-                />
-                <input
-                  type="file"
-                  multiple
-                  accept="image/jpeg,image/jpg,image/png"
-                  onChange={(e) => {
-                    if (e.target.files) {
-                      setImages(Array.from(e.target.files).slice(0, 5));
-                    }
-                  }}
-                  className="text-tattoo-light"
-                />
-                <button
-                  onClick={handleSendMessage}
-                  className="bg-tattoo-red text-tattoo-light px-4 py-2 rounded-lg hover:bg-tattoo-red/80"
-                >
-                  Send
-                </button>
-              </div>
-            </>
-          ) : (
-            <p className="text-tattoo-gray">No conversations available.</p>
-          )}
+
+                  {/* Message Input */}
+                  <div className="flex flex-col space-y-2">
+                    {userType === "designer" && designs.length > 0 && (
+                      <div className="flex space-x-2">
+                        <select
+                          value={selectedDesign}
+                          onChange={(e) => setSelectedDesign(e.target.value)}
+                          className="p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200 text-sm"
+                        >
+                          <option value="">Select Design (Optional)</option>
+                          {designs.map((design) => (
+                            <option key={design.id} value={design.id}>
+                              {design.Post.title}
+                            </option>
+                          ))}
+                        </select>
+                        {selectedDesign && (
+                          <select
+                            value={selectedStage}
+                            onChange={(e) => setSelectedStage(e.target.value)}
+                            className="p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200 text-sm"
+                          >
+                            <option value="">Select Stage (Optional)</option>
+                            <option value="initial_sketch">Initial Sketch</option>
+                            <option value="revision_1">Revision 1</option>
+                            <option value="revision_2">Revision 2</option>
+                            <option value="revision_3">Revision 3</option>
+                            <option value="final_draft">Final Draft</option>
+                            <option value="final_design">Final Design</option>
+                          </select>
+                        )}
+                      </div>
+                    )}
+                    <textarea
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      placeholder="Type your message..."
+                      className="p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200 w-full"
+                    />
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/jpeg,image/jpg,image/png"
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          setImages(Array.from(e.target.files).slice(0, 5));
+                        }
+                      }}
+                      className="text-light-white"
+                    />
+                    <button
+                      onClick={handleSendMessage}
+                      className="bg-accent-red text-light-white px-4 py-2 rounded-sm hover:bg-red-700 transition duration-200 font-semibold"
+                    >
+                      Send
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="text-text-gray">No conversations available.</p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </motion.div>

@@ -14,8 +14,8 @@ interface Notification {
 
 interface NavBarProps {
   setIsAuthenticated: (val: boolean) => void;
-  notifications: Notification[]; // Updated type
-  setNotifications: (notifications: Notification[]) => void; // Updated type
+  notifications: Notification[];
+  setNotifications: (notifications: Notification[]) => void;
   messages: string[];
   onLogoClick: () => void;
 }
@@ -23,6 +23,7 @@ interface NavBarProps {
 const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setNotifications, messages, onLogoClick }) => {
   const token = localStorage.getItem("authToken");
   const decoded = token ? JSON.parse(atob(token.split(".")[1])) : {};
+  const userId = decoded.id || "";
   const userType = decoded.userType || "";
   const userRole = userType === "fan" ? "Fan" : userType === "designer" ? "ArtDesigner" : userType === "shop" ? "Shop" : userType;
   const isAdmin = decoded.isAdmin || false;
@@ -66,12 +67,12 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
     <motion.nav
       initial={{ opacity: 0, y: -50 }}
       animate={{ opacity: 1, y: 0 }}
-      className="fixed top-0 w-full bg-tattoo-black shadow-lg border-b border-tattoo-red/20 z-50"
+      className="fixed top-0 w-full bg-dark-black shadow-lg border-b border-accent-gray z-50"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           <div className="flex items-center space-x-4">
-            <button onClick={toggleMenu} className="text-tattoo-light text-2xl focus:outline-none">
+            <button onClick={toggleMenu} className="text-light-white text-2xl focus:outline-none">
               ☰
             </button>
             <Link 
@@ -79,18 +80,18 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
               onClick={onLogoClick}
               className="flex-shrink-0 flex items-center"
             >
-              <span className="text-tattoo-red text-2xl font-bold tracking-tight">RightArtist</span>
+              <span className="text-accent-red text-2xl font-bold tracking-tight">RightArtist</span>
             </Link>
           </div>
           <div className="flex items-center">
             <div className="relative">
               <button
                 onClick={toggleNotifications}
-                className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-xl"
+                className="text-light-white hover:text-accent-red transition duration-200 text-xl"
               >
                 🔔
                 {visibleNotifications.length > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-tattoo-red text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                  <span className="absolute -top-2 -right-2 bg-accent-red text-light-white text-xs font-bold px-2 py-0.5 rounded-full">
                     {visibleNotifications.length}
                   </span>
                 )}
@@ -101,16 +102,16 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
                   animate="open"
                   exit="closed"
                   variants={dropdownVariants}
-                  className="absolute right-0 mt-2 w-72 bg-tattoo-black border border-tattoo-red/30 shadow-lg rounded-lg p-4 z-50 max-h-64 overflow-y-auto"
+                  className="absolute right-0 mt-2 w-72 bg-dark-gray border border-accent-gray shadow-lg rounded-sm p-4 z-50 max-h-64 overflow-y-auto"
                 >
-                  <h3 className="text-tattoo-red text-sm font-bold mb-2">Notifications</h3>
+                  <h3 className="text-accent-red text-sm font-bold mb-2">Notifications</h3>
                   {visibleNotifications.length > 0 ? (
                     <>
                       <ul className="max-h-48 overflow-y-auto">
                         {visibleNotifications.map((notif) => (
-                          <li key={notif.id} className="p-2 text-tattoo-light text-sm border-b border-tattoo-gray last:border-b-0">
-                            {notif.message} {/* Render the message property */}
-                            <p className="text-tattoo-gray text-xs">
+                          <li key={notif.id} className="p-2 text-light-white text-sm border-b border-accent-gray last:border-b-0">
+                            {notif.message}
+                            <p className="text-text-gray text-xs">
                               {new Date(notif.createdAt).toLocaleString()}
                             </p>
                           </li>
@@ -118,7 +119,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
                       </ul>
                       <button
                         onClick={clearNotifications}
-                        className="mt-2 w-full bg-tattoo-red text-white text-sm p-2 rounded-lg hover:bg-tattoo-red/80 transition duration-200"
+                        className="mt-2 w-full bg-accent-red text-light-white text-sm p-2 rounded-sm hover:bg-red-700 transition duration-200"
                       >
                         Clear All
                       </button>
@@ -126,14 +127,14 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
                         <Link
                           to="/notifications"
                           onClick={() => setIsNotificationsOpen(false)}
-                          className="mt-2 w-full text-center text-tattoo-light hover:text-tattoo-red text-sm block"
+                          className="mt-2 w-full text-center text-light-white hover:text-accent-red text-sm block"
                         >
                           View All ({notifications.length})
                         </Link>
                       )}
                     </>
                   ) : (
-                    <p className="text-tattoo-gray text-sm">No new notifications.</p>
+                    <p className="text-text-gray text-sm">No new notifications.</p>
                   )}
                 </motion.div>
               )}
@@ -147,19 +148,26 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
           animate="open"
           exit="closed"
           variants={menuVariants}
-          className="fixed top-16 left-0 w-64 bg-tattoo-gray/90 h-full shadow-lg z-40"
+          className="fixed top-16 left-0 w-64 bg-dark-gray h-full shadow-lg z-40"
         >
           <div className="flex flex-col p-4 space-y-4">
-            <span className="text-tattoo-light text-lg">
+            <span className="text-light-white text-lg">
               Hello {firstName} {lastName}!
             </span>
           </div>
           <div className="flex flex-col p-4 space-y-4">
+            <Link
+              to={`/profile/${userId}`}
+              onClick={toggleMenu}
+              className="text-light-white hover:text-accent-red transition duration-200 text-lg"
+            >
+              Profile
+            </Link>
             {userRole === "Fan" && (
               <Link
                 to="/booking-feed"
                 onClick={toggleMenu}
-                className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+                className="text-light-white hover:text-accent-red transition duration-200 text-lg"
               >
                 Dashboard (Booking Feed)
               </Link>
@@ -168,7 +176,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
               <Link
                 to="/design-feed"
                 onClick={toggleMenu}
-                className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+                className="text-light-white hover:text-accent-red transition duration-200 text-lg"
               >
                 Dashboard (Design Feed)
               </Link>
@@ -178,14 +186,14 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
                 <Link
                   to="/design-feed"
                   onClick={toggleMenu}
-                  className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+                  className="text-light-white hover:text-accent-red transition duration-200 text-lg"
                 >
                   Design Feed
                 </Link>
                 <Link
                   to="/booking-feed"
                   onClick={toggleMenu}
-                  className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+                  className="text-light-white hover:text-accent-red transition duration-200 text-lg"
                 >
                   Booking Feed
                 </Link>
@@ -195,7 +203,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
               <Link
                 to="/designs"
                 onClick={toggleMenu}
-                className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+                className="text-light-white hover:text-accent-red transition duration-200 text-lg"
               >
                 Designs
               </Link>
@@ -203,11 +211,11 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
             <Link
               to="/messages"
               onClick={toggleMenu}
-              className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg flex items-center"
+              className="text-light-white hover:text-accent-red transition duration-200 text-lg flex items-center"
             >
               Messages
               {unreadMessages > 0 && (
-                <span className="ml-2 bg-tattoo-red text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                <span className="ml-2 bg-accent-red text-light-white text-xs font-bold px-2 py-0.5 rounded-full">
                   {unreadMessages}
                 </span>
               )}
@@ -215,7 +223,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
             <Link
               to="/settings"
               onClick={toggleMenu}
-              className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+              className="text-light-white hover:text-accent-red transition duration-200 text-lg"
             >
               Settings
             </Link>
@@ -223,7 +231,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
               <Link
                 to="/stats"
                 onClick={toggleMenu}
-                className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+                className="text-light-white hover:text-accent-red transition duration-200 text-lg"
               >
                 Stats
               </Link>
@@ -232,7 +240,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
               <Link
                 to="/admin"
                 onClick={toggleMenu}
-                className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+                className="text-light-white hover:text-accent-red transition duration-200 text-lg"
               >
                 Admin
               </Link>
@@ -240,7 +248,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
             <Link
               to="/notifications"
               onClick={toggleMenu}
-              className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg"
+              className="text-light-white hover:text-accent-red transition duration-200 text-lg"
             >
               Notifications
             </Link>
@@ -249,7 +257,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
                 handleLogout();
                 toggleMenu();
               }}
-              className="text-tattoo-light hover:text-tattoo-red transition duration-200 text-lg text-left"
+              className="text-light-white hover:text-accent-red transition duration-200 text-lg text-left"
             >
               Logout
             </button>
