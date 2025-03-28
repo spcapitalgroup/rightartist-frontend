@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
-import api from "../api/axios"; // Import the custom axios instance
+import { useParams, useNavigate, Link } from "react-router-dom";
+import api from "../api/axios";
 import { motion } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
-import { Link, useParams, useNavigate } from "react-router-dom";
 
 interface Post {
   id: string;
@@ -10,19 +10,16 @@ interface Post {
   description: string;
   location: string;
   feedType: "design" | "booking";
-  userId: string;
-  clientId?: string | null;
-  shopId?: string | null;
-  artistId?: string | null;
-  status: "open" | "accepted" | "scheduled" | "completed" | "cancelled";
+  status: "open" | "closed" | "accepted" | "scheduled" | "completed" | "cancelled";
+  clientId: string | null;
+  shopId: string | null;
   images: string[];
-  scheduledDate?: string;
-  contactInfo?: { phone: string; email: string };
-  comments: Comment[];
-  user: { id: string; username: string };
-  shop?: { id: string; username: string };
-  client?: { id: string; username: string };
   createdAt: string;
+  scheduledDate: string;
+  contactInfo: { phone: string; email: string };
+  comments: Comment[];
+  shop: { id: string; username: string };
+  client: { id: string; username: string };
 }
 
 interface Comment {
@@ -31,232 +28,197 @@ interface Comment {
   userId: string;
   postId: string;
   parentId: string | null;
-  price?: number;
-  estimatedDuration?: string;
-  availability?: string;
-  withdrawn: boolean;
-  images: string[];
+  price: number;
   user: { id: string; username: string };
-  replies?: Comment[];
+  replies: Comment[];
   createdAt: string;
+}
+
+interface Rating {
+  id: string;
+  raterId: string;
+  rateeId: string;
+  postId: string;
+  rating: number;
+  comment: string;
+  createdAt: string;
+  rater: { id: string; username: string };
+  ratee: { id: string; username: string };
 }
 
 const PostPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [post, setPost] = useState<Post | null>(null);
-  const [comment, setComment] = useState("");
-  const [parentId, setParentId] = useState<string | null>(null);
-  const [price, setPrice] = useState("");
-  const [estimatedDuration, setEstimatedDuration] = useState("");
-  const [availability, setAvailability] = useState("");
-  const [images, setImages] = useState<File[]>([]);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [ratings, setRatings] = useState<Rating[]>([]);
   const [error, setError] = useState("");
-  const [isReplying, setIsReplying] = useState<string | null>(null);
-  const [showReviewModal, setShowReviewModal] = useState(false);
-  const [reviewRating, setReviewRating] = useState(0);
-  const [reviewComment, setReviewComment] = useState("");
-  const [hasReviewed, setHasReviewed] = useState(false);
-  const [showCompareModal, setShowCompareModal] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [newPrice, setNewPrice] = useState("");
+  const [replyContent, setReplyContent] = useState("");
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [ratingValue, setRatingValue] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const token = localStorage.getItem("authToken");
   const decoded = token ? JSON.parse(atob(token.split(".")[1])) : {};
   const userId = decoded.id || "";
-  const userType = decoded.userType || "";
-  const isPostOwner = post?.userId === userId;
-  const hasShopId = !!post?.shopId;
+  const userType = decoded.userType || "fan";
+  const isShop = userType === "shop";
+  const isDesigner = userType === "designer";
+  const isFan = userType === "fan";
+  const canComment =
+    (isShop && post?.feedType === "design") ||
+    (isDesigner && post?.feedType === "design") ||
+    (isFan && post?.feedType === "booking");
+  const canSchedule =
+    (isShop && post?.feedType === "booking") ||
+    (isFan && post?.feedType === "booking");
+  const canRate =
+    post?.status === "completed" &&
+    ((isShop && post?.clientId) || (isFan && post?.shopId) || (isDesigner && post?.shopId));
 
   useEffect(() => {
-    const fetchPost = async () => {
+    const fetchPostAndComments = async () => {
       try {
-        if (!token) {
-          setError("Please log in to view this post");
+        if (!id) {
+          setError("No post ID provided");
           return;
         }
 
-        const response = await api.get("/api/feed/", {
-          params: { postId: id },
-        });
-        console.log("🔍 Fetched post:", response.data);
-        const fetchedPost = response.data.posts[0];
-        if (fetchedPost) {
-          setPost(fetchedPost);
+        const postResponse = await api.get(`/api/posts/${id}`);
+        setPost(postResponse.data);
 
-          if (fetchedPost.status === "completed" && fetchedPost.userId === userId) {
-            const reviewResponse = await api.get(`/api/users/${fetchedPost.shopId}/reviews`);
-            const userReview = reviewResponse.data.find((review: any) => review.bookingId === id);
-            if (userReview) {
-              setHasReviewed(true);
-            } else {
-              setShowReviewModal(true);
-            }
-          }
-        } else {
-          setError("Post not found");
-        }
+        const commentsResponse = await api.get(`/api/comments/post/${id}`);
+        setComments(commentsResponse.data.comments || []);
+
+        // Fetch ratings for the post
+        const ratingsResponse = await api.get(`/api/ratings/post/${id}`);
+        setRatings(ratingsResponse.data.ratings || []);
       } catch (err: any) {
-        console.error("❌ Post Fetch Error:", err.response?.data || err.message);
         setError(err.response?.data?.message || "Failed to load post");
+        console.error("❌ Fetch Error:", err.response?.data || err.message);
       }
     };
-    fetchPost();
-  }, [id, userId, token]);
+
+    fetchPostAndComments();
+  }, [id]);
 
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
     try {
-      if (!token) {
-        setError("Please log in to comment");
-        return;
-      }
+      if (!id) throw new Error("No post ID provided");
 
-      if (!comment) {
-        setError("Comment content is required");
-        return;
-      }
+      const commentData = {
+        content: newComment,
+        postId: id,
+        parentId: replyingTo,
+        price: newPrice ? parseFloat(newPrice) : undefined,
+      };
 
-      const formData = new FormData();
-      formData.append("content", comment);
-      if (parentId) formData.append("parentId", parentId);
-      if (price) formData.append("price", price);
-      if (estimatedDuration) formData.append("estimatedDuration", estimatedDuration);
-      if (availability) formData.append("availability", availability);
-      images.forEach((image) => formData.append("images", image));
-
-      const response = await api.post(`/api/comments/${id}`, formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
-      console.log("✅ Comment Response:", response.data);
-
-      const newComment = response.data.data;
-      setPost((prev) => {
-        if (!prev) return prev;
-        if (parentId) {
-          const updatedComments = prev.comments.map((c) => {
-            if (c.id === parentId) {
-              return { ...c, replies: [...(c.replies || []), newComment] };
-            }
-            return c;
-          });
-          return { ...prev, comments: updatedComments };
+      const response = await api.post("/api/comments", commentData);
+      setComments((prev) => {
+        if (replyingTo) {
+          return prev.map((comment) =>
+            comment.id === replyingTo
+              ? { ...comment, replies: [...(comment.replies || []), response.data] }
+              : comment
+          );
         }
-        return { ...prev, comments: [...prev.comments, newComment] };
+        return [...prev, response.data];
       });
-      setComment("");
-      setParentId(null);
-      setPrice("");
-      setEstimatedDuration("");
-      setAvailability("");
-      setImages([]);
+      setNewComment("");
+      setNewPrice("");
+      setReplyingTo(null);
       setError("");
-      setIsReplying(null);
     } catch (err: any) {
-      console.error("❌ Comment Error:", err.response?.data || err.message);
       setError(err.response?.data?.message || "Failed to post comment");
+      console.error("❌ Comment Error:", err.response?.data || err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleAcceptPitch = async (commentId: string, shopId: string) => {
+  const handleAcceptComment = async (commentId: string) => {
     try {
-      if (!token) {
-        setError("Please log in to accept a pitch");
-        return;
-      }
+      if (!id) throw new Error("No post ID provided");
 
-      const response = await api.post(`/api/posts/${id}/accept-pitch`, { commentId, shopId });
-      console.log("✅ Accept Pitch Response:", response.data);
-      setPost((prev) => {
-        if (!prev) return prev;
-        return { ...prev, shopId, status: "accepted" };
-      });
+      await api.put(`/api/posts/${id}/accept`, { commentId });
+      setPost((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "accepted",
+              comments: prev.comments.map((c) =>
+                c.id === commentId ? { ...c, accepted: true } : c
+              ),
+            }
+          : prev
+      );
       setError("");
     } catch (err: any) {
-      console.error("❌ Accept Pitch Error:", err.response?.data || err.message);
-      setError(err.response?.data?.message || "Failed to accept pitch");
+      setError(err.response?.data?.message || "Failed to accept comment");
+      console.error("❌ Accept Comment Error:", err.response?.data || err.message);
     }
   };
 
-  const handleWithdrawPitch = async (commentId: string) => {
-    try {
-      if (!token) {
-        setError("Please log in to withdraw a pitch");
-        return;
-      }
-
-      const response = await api.post(`/api/comments/${commentId}/withdraw`, {});
-      console.log("✅ Withdraw Pitch Response:", response.data);
-      setPost((prev) => {
-        if (!prev) return prev;
-        const updatedComments = prev.comments.map((c) =>
-          c.id === commentId ? { ...c, withdrawn: true } : c
-        );
-        return { ...prev, comments: updatedComments };
-      });
-      setError("");
-    } catch (err: any) {
-      console.error("❌ Withdraw Pitch Error:", err.response?.data || err.message);
-      setError(err.response?.data?.message || "Failed to withdraw pitch");
-    }
-  };
-
-  const handleReviewSubmit = async (e: React.FormEvent) => {
+  const handleRatingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || !ratingValue) return;
+    setIsSubmitting(true);
+
     try {
-      if (!token) {
-        setError("Please log in to submit a review");
-        return;
-      }
+      if (!id || !post) throw new Error("No post ID provided");
 
-      if (!reviewRating) {
-        setError("Please provide a rating");
-        return;
-      }
+      const rateeId = isShop
+        ? post.clientId // Shop rates fan
+        : isFan
+        ? post.shopId // Fan rates shop
+        : isDesigner
+        ? post.shopId // Designer rates shop
+        : null;
+      if (!rateeId) throw new Error("No ratee ID found");
 
-      const response = await api.post("/api/users/reviews", {
-        targetUserId: post?.shopId,
-        rating: reviewRating,
-        comment: reviewComment,
-        bookingId: id,
-      });
-      console.log("✅ Review Response:", response.data);
-      setShowReviewModal(false);
-      setHasReviewed(true);
+      const ratingData = {
+        postId: id,
+        raterId: userId,
+        rateeId,
+        rating: ratingValue,
+        comment: ratingComment,
+      };
+
+      const response = await api.post("/api/ratings", ratingData);
+      setRatings((prev) => [...prev, response.data]);
+      setRatingValue(0);
+      setRatingComment("");
       setError("");
     } catch (err: any) {
-      console.error("❌ Review Error:", err.response?.data || err.message);
-      setError(err.response?.data?.message || "Failed to submit review");
+      setError(err.response?.data?.message || "Failed to submit rating");
+      console.error("❌ Rating Error:", err.response?.data || err.message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      setImages(Array.from(e.target.files).slice(0, 5));
-    }
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    e.currentTarget.style.display = "none"; // Hide the image if it fails to load
   };
 
-  const shouldShowScheduleButton = () => {
-    if (!post) return false;
-    const conditions = {
-      feedType: post.feedType,
-      userType,
-      isPostOwner,
-      hasShopId,
-      status: post.status,
-      shouldShowButton: post.feedType === "booking" && userType === "fan" && isPostOwner && hasShopId && post.status === "accepted",
-    };
-    console.log("🔍 Schedule an Ink Button Conditions:", conditions);
-    return conditions.shouldShowButton;
+  const truncateText = (text: string, maxLength: number) => {
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength) + "...";
   };
-
-  const nonWithdrawnComments = post?.comments?.filter(comment => !comment.withdrawn) || [];
 
   if (error) {
     return (
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="min-h-screen pt-20 pb-8 px-4 bg-dark-black text-light-white"
+        className="min-h-screen pt-20 pb-8 px-4 bg-dark-black"
       >
         <div className="max-w-4xl mx-auto text-red-500">{error}</div>
       </motion.div>
@@ -268,12 +230,15 @@ const PostPage: React.FC = () => {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="min-h-screen pt-20 pb-8 px-4 bg-dark-black text-light-white"
+        className="min-h-screen pt-20 pb-8 px-4 bg-dark-black"
       >
-        <div className="max-w-4xl mx-auto">Loading...</div>
+        <div className="max-w-4xl mx-auto text-light-white">Loading...</div>
       </motion.div>
     );
   }
+
+  const canSeeContactInfo =
+    (isShop && post.shopId === userId) || (isFan && post.clientId === userId);
 
   return (
     <motion.div
@@ -282,346 +247,343 @@ const PostPage: React.FC = () => {
       transition={{ duration: 0.5 }}
       className="min-h-screen pt-20 pb-8 px-4 bg-dark-black text-light-white"
     >
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-dark-gray p-6 rounded-sm shadow-sm border border-accent-gray">
-          <button
-            onClick={() => navigate(-1)}
-            className="text-accent-red hover:underline mb-4"
-          >
-            ← Back
-          </button>
-          <h1 className="text-3xl font-semibold text-light-white mb-4">{post.title}</h1>
-          <p className="text-text-gray mb-2">{post.description}</p>
-          <p className="text-text-gray mb-2">Location: {post.location}</p>
-          <p className="text-text-gray mb-2">
-            Posted by: <Link to={`/profile/${post.userId}`} className="text-accent-red hover:underline">{post.user.username}</Link>
-          </p>
-          <p className="text-text-gray mb-2">
-            Posted: {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
-          </p>
-          {post.status === "scheduled" && post.scheduledDate && (
-            <div className="text-text-gray mb-4">
-              <p>Scheduled: {new Date(post.scheduledDate).toLocaleString()}</p>
-              {post.contactInfo && (
-                <>
-                  <p>Contact: {post.contactInfo.phone}</p>
-                  <p>Email: {post.contactInfo.email}</p>
-                </>
+      <div className="max-w-6xl mx-auto">
+        <motion.div
+          className="bg-dark-gray p-6 rounded-sm shadow-lg border border-accent-gray"
+          initial={{ scale: 0.95, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+        >
+          <h1 className="text-3xl font-semibold text-light-white mb-6 tracking-wide">
+            {post.title}
+          </h1>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            <div>
+              <p className="text-text-gray">{post.description}</p>
+              <p className="text-text-gray mt-2">Location: {post.location}</p>
+              <p className="text-text-gray mt-1">
+                Posted by:{" "}
+                <Link
+                  to={`/profile/${
+                    post.feedType === "design" ? post.shopId : post.clientId
+                  }`}
+                  className="text-accent-red hover:underline"
+                >
+                  {post.feedType === "design"
+                    ? post.shop?.username
+                    : post.client?.username || "Unknown"}
+                </Link>
+              </p>
+              <p className="text-text-gray mt-1">Status: {post.status}</p>
+              <p className="text-text-gray mt-1">
+                Created: {new Date(post.createdAt).toLocaleDateString()}
+              </p>
+              {post.status === "scheduled" && post.scheduledDate && (
+                <div className="text-text-gray mt-2">
+                  <p>Scheduled: {new Date(post.scheduledDate).toLocaleString()}</p>
+                  {canSeeContactInfo && post.contactInfo && (
+                    <>
+                      <p>Contact: {post.contactInfo.phone}</p>
+                      <p>Email: {post.contactInfo.email}</p>
+                    </>
+                  )}
+                  <p>
+                    With:{" "}
+                    <Link
+                      to={`/profile/${
+                        post.feedType === "booking" ? post.shopId : post.clientId
+                      }`}
+                      className="text-accent-red hover:underline"
+                    >
+                      {post.feedType === "booking"
+                        ? post.shop?.username
+                        : post.client?.username || "Unknown"}
+                    </Link>
+                  </p>
+                </div>
               )}
-              <p>With: <Link to={`/profile/${post.shopId}`} className="text-accent-red hover:underline">{post.shop?.username}</Link></p>
             </div>
-          )}
-          {post.images && post.images.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-2 gap-2">
               {post.images.map((image, index) => (
-                <img
+                <motion.img
                   key={index}
                   src={`http://localhost:3000/uploads/${image}`}
                   alt={`Post ${index + 1}`}
-                  className="w-full h-40 object-cover rounded-sm hover:scale-105 transition-transform duration-200"
+                  className="w-full h-32 object-cover rounded-sm hover:scale-105 transition-transform duration-300"
+                  onError={handleImageError}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.1, duration: 0.3 }}
                 />
               ))}
             </div>
+          </div>
+
+          {canSchedule && post.status === "accepted" && (
+            <motion.button
+              onClick={() => navigate(`/post/${id}/schedule`)}
+              className="bg-accent-red text-light-white px-6 py-2 rounded-sm font-semibold hover:bg-red-700 transition duration-300 mb-6"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              Schedule
+            </motion.button>
           )}
-          <h2 className="text-xl font-medium text-text-gray mb-4">Comments</h2>
-          {nonWithdrawnComments.length > 0 ? (
-            <>
-              {post.feedType === "booking" && isPostOwner && nonWithdrawnComments.length > 1 && (
-                <button
-                  onClick={() => setShowCompareModal(true)}
-                  className="mb-4 bg-accent-red text-light-white px-4 py-2 rounded-sm hover:bg-red-700 transition duration-200 font-semibold"
+
+          {canRate && !ratings.some((r) => r.raterId === userId) && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="mb-6 p-4 bg-dark-black rounded-sm border border-accent-gray"
+            >
+              <h2 className="text-2xl font-semibold text-light-white mb-4">
+                Rate This Interaction
+              </h2>
+              <form onSubmit={handleRatingSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-text-gray mb-1">Rating (1-5)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="5"
+                    value={ratingValue}
+                    onChange={(e) => setRatingValue(Number(e.target.value))}
+                    className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-text-gray mb-1">
+                    Comment (Optional)
+                  </label>
+                  <textarea
+                    value={ratingComment}
+                    onChange={(e) => setRatingComment(e.target.value)}
+                    className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
+                    rows={3}
+                  />
+                </div>
+                <motion.button
+                  type="submit"
+                  className="bg-accent-red text-light-white px-6 py-2 rounded-sm font-semibold hover:bg-red-700 transition duration-300"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  disabled={isSubmitting}
                 >
-                  Compare Pitches
-                </button>
+                  {isSubmitting ? "Submitting..." : "Submit Rating"}
+                </motion.button>
+              </form>
+            </motion.div>
+          )}
+
+          {ratings.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="mb-6 p-4 bg-dark-black rounded-sm border border-accent-gray"
+            >
+              <h2 className="text-2xl font-semibold text-light-white mb-4">
+                Ratings
+              </h2>
+              {ratings.map((rating, index) => (
+                <motion.div
+                  key={rating.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: index * 0.1 }}
+                  className="bg-dark-gray p-4 rounded-sm border border-accent-gray mb-2"
+                >
+                  <p className="text-text-gray">
+                    <Link
+                      to={`/profile/${rating.raterId}`}
+                      className="text-accent-red hover:underline"
+                    >
+                      {rating.rater.username}
+                    </Link>{" "}
+                    rated{" "}
+                    <Link
+                      to={`/profile/${rating.rateeId}`}
+                      className="text-accent-red hover:underline"
+                    >
+                      {rating.ratee.username}
+                    </Link>
+                  </p>
+                  <p className="text-text-gray mt-1">
+                    Rating: <span className="text-light-white">{rating.rating} ★★★★★</span>
+                  </p>
+                  {rating.comment && (
+                    <p className="text-text-gray mt-1">
+                      Comment: <span className="text-light-white">{rating.comment}</span>
+                    </p>
+                  )}
+                  <p className="text-text-gray text-sm mt-1">
+                    Rated on: {new Date(rating.createdAt).toLocaleDateString()}
+                  </p>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+
+          <h2 className="text-2xl font-semibold text-light-white mb-4">
+            Comments
+          </h2>
+          {canComment && (
+            <motion.form
+              onSubmit={handleCommentSubmit}
+              className="mb-6 space-y-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <div>
+                <label className="block text-text-gray mb-1">
+                  {replyingTo ? "Reply" : "New Comment"}
+                </label>
+                <textarea
+                  value={replyingTo ? replyContent : newComment}
+                  onChange={(e) =>
+                    replyingTo
+                      ? setReplyContent(e.target.value)
+                      : setNewComment(e.target.value)
+                  }
+                  className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
+                  rows={3}
+                  required
+                />
+              </div>
+              {(isShop || isDesigner) && post.feedType === "design" && !replyingTo && (
+                <div>
+                  <label className="block text-text-gray mb-1">
+                    Price (Optional)
+                  </label>
+                  <input
+                    type="number"
+                    value={newPrice}
+                    onChange={(e) => setNewPrice(e.target.value)}
+                    className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
+                  />
+                </div>
               )}
-              {nonWithdrawnComments.map((c) => (
-                <div key={c.id} className="mb-4 bg-dark-black p-4 rounded-sm border border-accent-gray">
-                  <p className="text-light-white">{c.content}</p>
-                  {c.price && <p className="text-text-gray">Price: ${c.price.toFixed(2)}</p>}
-                  {c.estimatedDuration && <p className="text-text-gray">Duration: {c.estimatedDuration}</p>}
-                  {c.availability && <p className="text-text-gray">Availability: {c.availability}</p>}
-                  <p className="text-text-gray text-sm">
-                    By: <Link to={`/profile/${c.userId}`} className="text-accent-red hover:underline">{c.user.username}</Link>
-                  </p>
-                  <p className="text-text-gray text-sm">
-                    {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
-                  </p>
-                  {c.images && c.images.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-2">
-                      {c.images.map((image, index) => (
-                        <img
-                          key={index}
-                          src={`http://localhost:3000/uploads/${image}`}
-                          alt={`Comment ${index + 1}`}
-                          className="w-full h-40 object-cover rounded-sm hover:scale-105 transition-transform duration-200"
-                        />
-                      ))}
-                    </div>
+              <div className="flex space-x-2">
+                <motion.button
+                  type="submit"
+                  className="bg-accent-red text-light-white px-6 py-2 rounded-sm font-semibold hover:bg-red-700 transition duration-300"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting
+                    ? "Posting..."
+                    : replyingTo
+                    ? "Post Reply"
+                    : "Post Comment"}
+                </motion.button>
+                {replyingTo && (
+                  <motion.button
+                    type="button"
+                    onClick={() => {
+                      setReplyingTo(null);
+                      setReplyContent("");
+                    }}
+                    className="bg-accent-gray text-light-white px-4 py-2 rounded-sm hover:bg-gray-600 transition duration-300"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    Cancel Reply
+                  </motion.button>
+                )}
+              </div>
+            </motion.form>
+          )}
+
+          <div className="space-y-4">
+            {comments.length > 0 ? (
+              comments.map((comment) => (
+                <motion.div
+                  key={comment.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                  className="bg-dark-black p-4 rounded-sm shadow-sm border border-accent-gray hover:shadow-xl hover:border-accent-red transition-all duration-300"
+                >
+                  <p className="text-text-gray">{comment.content}</p>
+                  {comment.price && (
+                    <p className="text-text-gray mt-1">
+                      Price: ${comment.price.toFixed(2)}
+                    </p>
                   )}
-                  <div className="mt-2 flex space-x-2">
-                    {post.feedType === "booking" && userType === "fan" && isPostOwner && !hasShopId && !c.parentId && !c.withdrawn && (
-                      <button
-                        onClick={() => handleAcceptPitch(c.id, c.userId)}
-                        className="bg-accent-red text-light-white px-4 py-2 rounded-sm hover:bg-red-700 transition duration-200 font-semibold"
-                      >
-                        Accept Pitch
-                      </button>
-                    )}
-                    {post.feedType === "booking" && userType === "shop" && c.userId === userId && !hasShopId && !c.parentId && !c.withdrawn && (
-                      <button
-                        onClick={() => handleWithdrawPitch(c.id)}
-                        className="bg-accent-gray text-light-white px-4 py-2 rounded-sm hover:bg-gray-600 transition duration-200"
-                      >
-                        Withdraw Pitch
-                      </button>
-                    )}
-                    {shouldShowScheduleButton() && !c.parentId && c.userId === post.shopId && (
-                      <Link
-                        to={`/post/${id}/schedule`}
-                        className="text-accent-red hover:underline"
-                      >
-                        Schedule an Ink
-                      </Link>
-                    )}
-                    {post.feedType === "booking" && userType === "fan" && c.userId === post.shopId && !c.replies?.length && (
-                      <button
-                        onClick={() => setIsReplying(c.id)}
-                        className="text-accent-red hover:underline text-sm"
-                      >
-                        Reply
-                      </button>
-                    )}
-                  </div>
-                  {c.withdrawn && <p className="text-text-gray mt-2">Withdrawn</p>}
-                  {isReplying === c.id && (
-                    <form onSubmit={handleCommentSubmit} className="mt-2 space-y-2">
-                      <textarea
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        placeholder="Your reply..."
-                        className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
-                        rows={2}
-                        onFocus={() => setParentId(c.id)}
-                      />
-                      <div className="flex space-x-2">
-                        <button
-                          type="submit"
-                          className="bg-accent-red text-light-white px-4 py-2 rounded-sm hover:bg-red-700 transition duration-200 font-semibold"
-                        >
-                          Reply
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsReplying(null);
-                            setComment("");
-                            setParentId(null);
-                          }}
-                          className="bg-accent-gray text-light-white px-4 py-2 rounded-sm hover:bg-gray-600 transition duration-200"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
+                  <p className="text-text-gray text-sm mt-1">
+                    By:{" "}
+                    <Link
+                      to={`/profile/${comment.userId}`}
+                      className="text-accent-red hover:underline"
+                    >
+                      {comment.user?.username}
+                    </Link>
+                  </p>
+                  <p className="text-text-gray text-sm mt-1">
+                    Posted: {new Date(comment.createdAt).toLocaleDateString()}
+                  </p>
+                  {isShop && post.feedType === "design" && post.status === "open" && (
+                    <motion.button
+                      onClick={() => handleAcceptComment(comment.id)}
+                      className="mt-2 bg-accent-red text-light-white px-4 py-1 rounded-sm hover:bg-red-700 transition duration-200"
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      Accept
+                    </motion.button>
                   )}
-                  {c.replies && c.replies.length > 0 && (
-                    <div className="ml-4 mt-2 space-y-2">
-                      {c.replies.map((reply) => (
-                        <div key={reply.id} className="bg-dark-gray p-2 rounded-sm border border-accent-gray">
-                          <p className="text-light-white">{reply.content}</p>
-                          <p className="text-text-gray text-sm">
-                            By: <Link to={`/profile/${reply.userId}`} className="text-accent-red hover:underline">{reply.user.username}</Link>
+                  {canComment && (
+                    <motion.button
+                      onClick={() => {
+                        setReplyingTo(comment.id);
+                        setReplyContent("");
+                      }}
+                      className="mt-2 ml-2 text-accent-red hover:underline text-sm"
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      Reply
+                    </motion.button>
+                  )}
+                  {comment.replies && comment.replies.length > 0 && (
+                    <div className="ml-6 mt-4 space-y-2">
+                      {comment.replies.map((reply) => (
+                        <div
+                          key={reply.id}
+                          className="bg-dark-gray p-3 rounded-sm border border-accent-gray"
+                        >
+                          <p className="text-text-gray">{reply.content}</p>
+                          <p className="text-text-gray text-sm mt-1">
+                            By:{" "}
+                            <Link
+                              to={`/profile/${reply.userId}`}
+                              className="text-accent-red hover:underline"
+                            >
+                              {reply.user?.username}
+                            </Link>
                           </p>
-                          <p className="text-text-gray text-sm">
-                            {formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true })}
+                          <p className="text-text-gray text-sm mt-1">
+                            Posted: {new Date(reply.createdAt).toLocaleDateString()}
                           </p>
                         </div>
                       ))}
                     </div>
                   )}
-                </div>
-              ))}
-            </>
-          ) : (
-            <p className="text-text-gray mb-4">No comments yet.</p>
-          )}
-          {(userType === "designer" || userType === "shop") && (
-            <form onSubmit={handleCommentSubmit} className="space-y-4">
-              <div>
-                <label className="block text-text-gray mb-1">Add a Comment</label>
-                <textarea
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  placeholder="Add a comment..."
-                  className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
-                  rows={3}
-                />
-              </div>
-              {post.feedType === "booking" && userType === "shop" && !parentId && (
-                <div className="space-y-2">
-                  <div>
-                    <label className="block text-text-gray mb-1">Price</label>
-                    <input
-                      type="number"
-                      value={price}
-                      onChange={(e) => setPrice(e.target.value)}
-                      placeholder="Price"
-                      className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-text-gray mb-1">Estimated Duration</label>
-                    <input
-                      type="text"
-                      value={estimatedDuration}
-                      onChange={(e) => setEstimatedDuration(e.target.value)}
-                      placeholder="Estimated Duration (e.g., 2 hours)"
-                      className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-text-gray mb-1">Availability</label>
-                    <input
-                      type="text"
-                      value={availability}
-                      onChange={(e) => setAvailability(e.target.value)}
-                      placeholder="Availability (e.g., Next week)"
-                      className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
-                    />
-                  </div>
-                </div>
-              )}
-              {post.feedType === "design" && userType === "designer" && (
-                <div>
-                  <label className="block text-text-gray mb-1">Images</label>
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/jpeg,image/jpg,image/png"
-                    onChange={handleImageChange}
-                    className="text-light-white"
-                  />
-                </div>
-              )}
-              <button
-                type="submit"
-                className="bg-accent-red text-light-white px-4 py-2 rounded-sm hover:bg-red-700 transition duration-200 font-semibold"
-              >
-                Post Comment
-              </button>
-            </form>
-          )}
-        </div>
+                </motion.div>
+              ))
+            ) : (
+              <p className="text-text-gray">No comments yet.</p>
+            )}
+          </div>
+        </motion.div>
       </div>
-
-      {showReviewModal && !hasReviewed && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ duration: 0.3 }}
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-        >
-          <div className="bg-dark-gray p-6 rounded-sm shadow-sm border border-accent-gray w-full max-w-md">
-            <h2 className="text-2xl font-semibold text-light-white mb-4">Review Your Experience</h2>
-            <form onSubmit={handleReviewSubmit} className="space-y-4">
-              <div>
-                <label className="block text-text-gray mb-1">Rating (1-5)</label>
-                <div className="flex space-x-1">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setReviewRating(star)}
-                      className={`text-2xl ${reviewRating >= star ? "text-yellow-400" : "text-text-gray"}`}
-                    >
-                      ★
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="block text-text-gray mb-1">Review</label>
-                <textarea
-                  value={reviewComment}
-                  onChange={(e) => setReviewComment(e.target.value)}
-                  placeholder="Your review..."
-                  className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
-                  rows={3}
-                />
-              </div>
-              <div className="flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => setShowReviewModal(false)}
-                  className="bg-accent-gray text-light-white px-4 py-2 rounded-sm hover:bg-gray-600 transition duration-200"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="bg-accent-red text-light-white px-4 py-2 rounded-sm hover:bg-red-700 transition duration-200 font-semibold"
-                >
-                  Submit Review
-                </button>
-              </div>
-            </form>
-          </div>
-        </motion.div>
-      )}
-
-      {showCompareModal && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ duration: 0.3 }}
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-        >
-          <div className="bg-dark-gray p-6 rounded-sm shadow-sm border border-accent-gray w-full max-w-4xl">
-            <h2 className="text-2xl font-semibold text-light-white mb-4">Compare Pitches</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full text-light-white">
-                <thead>
-                  <tr className="border-b border-accent-gray">
-                    <th className="p-2 text-left">Shop</th>
-                    <th className="p-2 text-left">Price</th>
-                    <th className="p-2 text-left">Duration</th>
-                    <th className="p-2 text-left">Availability</th>
-                    <th className="p-2 text-left">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {nonWithdrawnComments.filter(c => !c.parentId).map((c) => (
-                    <tr key={c.id} className="border-b border-accent-gray/50">
-                      <td className="p-2">
-                        <Link to={`/profile/${c.userId}`} className="text-accent-red hover:underline">{c.user.username}</Link>
-                      </td>
-                      <td className="p-2">{c.price ? `$${c.price.toFixed(2)}` : "N/A"}</td>
-                      <td className="p-2">{c.estimatedDuration || "N/A"}</td>
-                      <td className="p-2">{c.availability || "N/A"}</td>
-                      <td className="p-2">
-                        <button
-                          onClick={() => handleAcceptPitch(c.id, c.userId)}
-                          className="bg-accent-red text-light-white px-4 py-1 rounded-sm hover:bg-red-700 transition duration-200 font-semibold"
-                        >
-                          Accept
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <button
-              onClick={() => setShowCompareModal(false)}
-              className="mt-4 bg-accent-gray text-light-white px-4 py-2 rounded-sm hover:bg-gray-600 transition duration-200"
-            >
-              Close
-            </button>
-          </div>
-        </motion.div>
-      )}
     </motion.div>
   );
 };

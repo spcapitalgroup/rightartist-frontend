@@ -15,6 +15,7 @@ import PostPage from "./components/PostPage";
 import DesignsPage from "./components/DesignsPage";
 import ScheduleInkPage from "./components/ScheduleInkPage";
 import ProfilePage from "./components/ProfilePage";
+import BookingsPage from "./components/BookingsPage";
 
 // Define the Notification type based on the backend response
 interface Notification {
@@ -98,7 +99,7 @@ const App: React.FC = () => {
       } else if (userType === "designer") {
         navigate("/design-feed");
       } else if (userType === "shop") {
-        navigate("/design-feed");
+        navigate("/bookings"); // Redirect shop users to the new Bookings page
       }
     }
   }, [isAuthenticated, userType, isAdmin, location.pathname, navigate]);
@@ -249,7 +250,7 @@ const App: React.FC = () => {
             console.error("❌ Failed to send heartbeat:", err);
           }
         } else {
-          console.log("⚠️ Web W e b S o c k e t  not open for:", userId, "State:", wsRef.current?.readyState, "—reconnecting...");
+          console.log("⚠️ Web W e b S o c k e t  not open for:", userId, "State:", wsRef.current?.readyState, "—reconnecting...");
           connectWebSocket();
         }
       }, 30000); // Send heartbeat every 30 seconds (increased from 1 second)
@@ -354,6 +355,11 @@ const App: React.FC = () => {
           <Route path="/designs" element={
             <ProtectedRoute>
               {(userType === "designer" || userType === "shop") ? <DesignsPage /> : <Navigate to="/" replace />}
+            </ProtectedRoute>
+          } />
+          <Route path="/bookings" element={
+            <ProtectedRoute>
+              {userType === "shop" ? <BookingsPage /> : <Navigate to="/" replace />}
             </ProtectedRoute>
           } />
         </Routes>

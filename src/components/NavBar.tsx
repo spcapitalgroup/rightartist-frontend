@@ -156,6 +156,15 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
             </span>
           </div>
           <div className="flex flex-col p-4 space-y-4">
+            {userRole === "Shop" && (
+              <Link
+                to="/bookings"
+                onClick={toggleMenu}
+                className="text-light-white hover:text-accent-red transition duration-200 text-lg"
+              >
+                Dashboard
+              </Link>
+            )}
             <Link
               to={`/profile/${userId}`}
               onClick={toggleMenu}
