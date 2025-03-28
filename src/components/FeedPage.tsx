@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import api from "../api/axios"; // Relative import without .ts extension
+import React, { useState, useEffect, useCallback } from "react";
+import api from "../api/axios";
 import { motion } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
 import { Link } from "react-router-dom";
@@ -34,8 +34,23 @@ interface Comment {
   createdAt?: string;
 }
 
-const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) => {
-  const [posts, setPosts] = useState<Post[]>([]);
+interface Notification {
+  id: string;
+  userId: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface FeedPageProps {
+  notifications: Notification[];
+}
+
+const FeedPage: React.FC<FeedPageProps> = ({ notifications }) => {
+  const [designPosts, setDesignPosts] = useState<Post[]>([]);
+  const [bookingPosts, setBookingPosts] = useState<Post[]>([]);
+  const [activeTab, setActiveTab] = useState<"design" | "booking">("design");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
@@ -50,24 +65,46 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
   const decoded = token ? JSON.parse(atob(token.split(".")[1])) : {};
   const userType = decoded.userType || "fan";
   const isPaid = decoded.isPaid === true;
+  const isShop = userType === "shop";
 
-  useEffect(() => {
-    const fetchPosts = async () => {
-      try {
-        if (!token) {
-          setError("Please log in to access the feed");
-          return;
+  const fetchPosts = useCallback(async () => {
+    try {
+      if (!token) {
+        setError("Please log in to access the feed");
+        return;
+      }
+
+      if (isShop) {
+        const designResponse = await api.get("/api/feed/", { params: { feedType: "design" } });
+        const bookingResponse = await api.get("/api/feed/", { params: { feedType: "booking" } });
+        console.log("🔍 Design Feed Response:", designResponse.data);
+        console.log("🔍 Booking Feed Response:", bookingResponse.data);
+        setDesignPosts(designResponse.data.posts || []);
+        setBookingPosts(bookingResponse.data.posts || []);
+
+        const designUserIds = designResponse.data.posts
+          .map((post: Post) => post.shopId)
+          .filter((id: string | null | undefined): id is string => Boolean(id));
+        const bookingUserIds = bookingResponse.data.posts
+          .map((post: Post) => post.clientId)
+          .filter((id: string | null | undefined): id is string => Boolean(id));
+        const uniqueUserIds = [...new Set([...designUserIds, ...bookingUserIds])] as string[];
+        const ratingsData: { [key: string]: number } = {};
+        for (const userId of uniqueUserIds) {
+          const ratingResponse = await api.get(`/api/users/${userId}/rating`);
+          ratingsData[userId] = ratingResponse.data.averageRating || 0;
         }
-
-        const response = await api.get("/api/feed/", {
-          params: { feedType },
-        });
+        setRatings(ratingsData);
+      } else {
+        const feedType = userType === "fan" ? "booking" : "design";
+        const response = await api.get("/api/feed/", { params: { feedType } });
         console.log(`🔍 ${feedType} Feed Response:`, response.data);
         const fetchedPosts = response.data.posts || [];
-        setPosts(fetchedPosts);
+        setDesignPosts(fetchedPosts);
+        setBookingPosts([]);
 
         const userIds = fetchedPosts
-          .map((post: Post) => (feedType === "design" ? post.shopId : post.clientId))
+          .map((post: Post) => (feedType === "booking" ? post.clientId : post.shopId))
           .filter((id: string | null | undefined): id is string => Boolean(id));
         const uniqueUserIds = [...new Set(userIds)] as string[];
         const ratingsData: { [key: string]: number } = {};
@@ -76,33 +113,58 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
           ratingsData[userId] = ratingResponse.data.averageRating || 0;
         }
         setRatings(ratingsData);
-      } catch (err: any) {
-        console.error(`❌ ${feedType} Feed Fetch Error:`, err.response?.data || err.message);
-        setError(err.response?.data?.message || "Failed to load feed");
       }
-    };
-    fetchPosts();
-  }, [feedType, token]);
+    } catch (err: any) {
+      console.error(`❌ Feed Fetch Error:`, err.response?.data || err.message);
+      setError(err.response?.data?.message || "Failed to load feed");
+    }
+  }, [token, userType, isShop]);
 
   useEffect(() => {
-    if (sortBy === "date") {
-      setPosts((prevPosts) =>
-        [...prevPosts].sort((a, b) => {
-          return new Date(b.createdAt || "").getTime() - new Date(a.createdAt || "").getTime();
-        })
-      );
-    } else if (sortBy === "rating") {
-      setPosts((prevPosts) =>
-        [...prevPosts].sort((a, b) => {
-          const userIdA = feedType === "design" ? a.shopId : a.clientId;
-          const userIdB = feedType === "design" ? b.shopId : b.clientId;
+    fetchPosts();
+  }, [fetchPosts]);
+
+  useEffect(() => {
+    if (notifications.length > 0) {
+      const latestNotification = notifications[notifications.length - 1];
+      if (latestNotification.message.toLowerCase().includes("post") || latestNotification.message.toLowerCase().includes("feed")) {
+        console.log("🔔 New feed-related notification detected, refetching posts...");
+        fetchPosts();
+      }
+    }
+  }, [notifications, fetchPosts]);
+
+  const sortPosts = useCallback(
+    (posts: Post[]) => {
+      if (sortBy === "date") {
+        return [...posts].sort((a, b) => new Date(b.createdAt || "").getTime() - new Date(a.createdAt || "").getTime());
+      } else if (sortBy === "rating") {
+        return [...posts].sort((a, b) => {
+          const userIdA = isShop && activeTab === "booking" ? a.clientId : a.shopId;
+          const userIdB = isShop && activeTab === "booking" ? b.clientId : b.shopId;
           const ratingA = userIdA ? ratings[userIdA] || 0 : 0;
           const ratingB = userIdB ? ratings[userIdB] || 0 : 0;
           return ratingB - ratingA;
-        })
-      );
+        });
+      }
+      return posts;
+    },
+    [sortBy, ratings, isShop, activeTab]
+  );
+
+  useEffect(() => {
+    const postsToSort = isShop ? (activeTab === "design" ? designPosts : bookingPosts) : designPosts;
+    const sortedPosts = sortPosts(postsToSort);
+    if (isShop) {
+      if (activeTab === "design" && JSON.stringify(designPosts) !== JSON.stringify(sortedPosts)) {
+        setDesignPosts(sortedPosts);
+      } else if (activeTab === "booking" && JSON.stringify(bookingPosts) !== JSON.stringify(sortedPosts)) {
+        setBookingPosts(sortedPosts);
+      }
+    } else if (JSON.stringify(designPosts) !== JSON.stringify(sortedPosts)) {
+      setDesignPosts(sortedPosts);
     }
-  }, [sortBy, ratings, feedType]);
+  }, [sortBy, ratings, activeTab, isShop, designPosts, bookingPosts, sortPosts]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -111,25 +173,19 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
   };
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    e.currentTarget.style.display = "none"; // Hide the image if it fails to load
+    e.currentTarget.style.display = "none";
   };
 
   const handlePostSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const postData = {
-        title,
-        description,
-        location,
-        feedType,
-      };
+      const feedType = isShop ? activeTab : userType === "fan" ? "booking" : "design";
+      const postData = { title, description, location, feedType };
 
       console.log("🔍 Post Data:", postData);
 
       const createResponse = await api.post("/api/posts/create", postData, {
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       });
       console.log("✅ Post Creation Response:", createResponse.data);
 
@@ -142,16 +198,20 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
 
         console.log("🔍 Uploading Images for Post:", newPost.id);
         const uploadResponse = await api.post("/api/posts/upload-images", formData, {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
+          headers: { "Content-Type": "multipart/form-data" },
         });
         console.log("✅ Image Upload Response:", uploadResponse.data);
 
         newPost.images = uploadResponse.data.images;
       }
 
-      setPosts([newPost, ...posts]);
+      if (isShop) {
+        activeTab === "design"
+          ? setDesignPosts([newPost, ...designPosts])
+          : setBookingPosts([newPost, ...bookingPosts]);
+      } else {
+        setDesignPosts([newPost, ...designPosts]);
+      }
       setTitle("");
       setDescription("");
       setLocation("");
@@ -168,6 +228,8 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + "...";
   };
+
+  const postsToShow = isShop ? (activeTab === "design" ? designPosts : bookingPosts) : designPosts;
 
   return (
     <motion.div
@@ -190,9 +252,37 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              {feedType === "design" ? "Design Feed" : "Booking Feed"}
+              Feed
             </motion.h1>
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+              {isShop && (
+                <div className="flex space-x-2">
+                  <motion.button
+                    onClick={() => setActiveTab("design")}
+                    className={`px-4 py-2 rounded-sm font-semibold transition duration-300 ${
+                      activeTab === "design"
+                        ? "bg-accent-red text-light-white"
+                        : "bg-dark-gray text-text-gray hover:bg-accent-gray"
+                    }`}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    Design
+                  </motion.button>
+                  <motion.button
+                    onClick={() => setActiveTab("booking")}
+                    className={`px-4 py-2 rounded-sm font-semibold transition duration-300 ${
+                      activeTab === "booking"
+                        ? "bg-accent-red text-light-white"
+                        : "bg-dark-gray text-text-gray hover:bg-accent-gray"
+                    }`}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    Booking
+                  </motion.button>
+                </div>
+              )}
               <motion.button
                 onClick={() => setViewType(viewType === "list" ? "tiled" : "list")}
                 className="text-text-gray text-sm border border-accent-gray px-3 py-1 rounded-sm hover:bg-dark-black transition duration-200"
@@ -215,8 +305,7 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
                 <option value="date">Sort by Date</option>
                 <option value="rating">Sort by Rating</option>
               </motion.select>
-              {(feedType === "design" && userType === "shop" && isPaid) ||
-              (feedType === "booking" && userType === "fan") ? (
+              {(isShop && isPaid) || (!isShop && userType === "fan") ? (
                 <motion.button
                   onClick={() => setIsModalOpen(true)}
                   className="bg-accent-red text-light-white px-4 py-2 rounded-sm font-semibold hover:bg-red-700 transition duration-300"
@@ -235,9 +324,9 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: 0.3 }}
                 >
-                  {feedType === "design" && !isPaid && userType === "shop"
+                  {isShop && !isPaid
                     ? "Complete payment to post"
-                    : "Only " + (feedType === "design" ? "Shop Pros" : "Ink Hunters") + " can post here"}
+                    : "Only " + (isShop ? "Shop Pros" : "Ink Hunters") + " can post here"}
                 </motion.p>
               )}
             </div>
@@ -253,10 +342,10 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
             </motion.p>
           )}
           <div className={`space-y-6 ${viewType === "tiled" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" : ""}`}>
-            {posts.map((post, index) => {
+            {postsToShow.map((post, index) => {
               const truncatedDescription = truncateText(post.description, 100);
               const visibleComments = post.comments?.slice(0, 2) || [];
-              const userId = feedType === "design" ? post.shopId : post.clientId;
+              const userId = isShop && activeTab === "booking" ? post.clientId : post.shopId;
               const rating = userId ? ratings[userId] || 0 : 0;
 
               return (
@@ -279,10 +368,10 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
                       <p className="text-text-gray text-sm mt-1">
                         Posted by:{" "}
                         <Link
-                          to={`/profile/${feedType === "design" ? post.shopId : post.clientId}`}
+                          to={`/profile/${isShop && activeTab === "booking" ? post.clientId : post.shopId}`}
                           className="text-accent-red hover:underline"
                         >
-                          {feedType === "design" ? post.shop?.username : post.client?.username || "Unknown"}
+                          {(isShop && activeTab === "booking" ? post.client?.username : post.shop?.username) || "Unknown"}
                         </Link>
                       </p>
                       {rating > 0 && (
@@ -303,10 +392,10 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
                           <p>
                             With:{" "}
                             <Link
-                              to={`/profile/${feedType === "booking" ? post.shopId : post.clientId}`}
+                              to={`/profile/${isShop && activeTab === "booking" ? post.shopId : post.clientId}`}
                               className="text-accent-red hover:underline"
                             >
-                              {feedType === "booking" ? post.shop?.username : post.client?.username || "Unknown"}
+                              {(isShop && activeTab === "booking" ? post.shop?.username : post.client?.username) || "Unknown"}
                             </Link>
                           </p>
                         </div>
@@ -374,7 +463,7 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
             transition={{ duration: 0.5, ease: "easeOut" }}
           >
             <h2 className="text-2xl font-semibold text-light-white mb-4 tracking-wide">
-              New {feedType === "design" ? "Design" : "Booking"} Post
+              New {isShop ? activeTab.charAt(0).toUpperCase() + activeTab.slice(1) : userType === "fan" ? "Booking" : "Design"} Post
             </h2>
             <form onSubmit={handlePostSubmit} className="space-y-4">
               <div>
@@ -420,13 +509,40 @@ const FeedPage: React.FC<{ feedType: "design" | "booking" }> = ({ feedType }) =>
               </div>
               <div>
                 <label className="block text-text-gray mb-1">Images</label>
+                <label
+                  htmlFor="image-upload"
+                  className="inline-block p-2 bg-dark-black border border-accent-gray rounded-sm cursor-pointer hover:bg-accent-gray transition duration-200"
+                  title="Upload Images"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-6 w-6 text-light-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 9a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                  </svg>
+                </label>
                 <motion.input
+                  id="image-upload"
                   type="file"
                   name="images"
                   multiple
                   accept="image/jpeg,image/jpg,image/png"
                   onChange={handleImageChange}
-                  className="text-light-white"
+                  className="hidden"
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.5, delay: 0.4 }}

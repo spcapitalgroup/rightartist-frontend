@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 
-// Define the Notification type based on the backend response
 interface Notification {
   id: string;
   userId: string;
@@ -15,12 +14,11 @@ interface Notification {
 interface NavBarProps {
   setIsAuthenticated: (val: boolean) => void;
   notifications: Notification[];
-  setNotifications: (notifications: Notification[]) => void;
   messages: string[];
   onLogoClick: () => void;
 }
 
-const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setNotifications, messages, onLogoClick }) => {
+const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, messages, onLogoClick }) => {
   const token = localStorage.getItem("authToken");
   const decoded = token ? JSON.parse(atob(token.split(".")[1])) : {};
   const userId = decoded.id || "";
@@ -34,10 +32,6 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
   const toggleNotifications = () => setIsNotificationsOpen(!isNotificationsOpen);
-  const clearNotifications = () => {
-    setNotifications([]);
-    setIsNotificationsOpen(false);
-  };
 
   const handleLogout = () => {
     localStorage.removeItem("authToken");
@@ -51,7 +45,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
     return !parsed.isRead;
   }).length;
 
-  console.log("🔍 NavBar rendered with notifications:", notifications);
+  console.log("🔍 Rendering NavBar with notifications:", notifications);
 
   const menuVariants = {
     closed: { opacity: 0, x: "-100%" },
@@ -75,7 +69,7 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
             <button onClick={toggleMenu} className="text-light-white text-2xl focus:outline-none">
               ☰
             </button>
-            <Link 
+            <Link
               to="/"
               onClick={onLogoClick}
               className="flex-shrink-0 flex items-center"
@@ -117,12 +111,6 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
                           </li>
                         ))}
                       </ul>
-                      <button
-                        onClick={clearNotifications}
-                        className="mt-2 w-full bg-accent-red text-light-white text-sm p-2 rounded-sm hover:bg-red-700 transition duration-200"
-                      >
-                        Clear All
-                      </button>
                       {notifications.length > 5 && (
                         <Link
                           to="/notifications"
@@ -172,42 +160,13 @@ const NavBar: React.FC<NavBarProps> = ({ setIsAuthenticated, notifications, setN
             >
               Profile
             </Link>
-            {userRole === "Fan" && (
-              <Link
-                to="/booking-feed"
-                onClick={toggleMenu}
-                className="text-light-white hover:text-accent-red transition duration-200 text-lg"
-              >
-                Dashboard (Booking Feed)
-              </Link>
-            )}
-            {userRole === "ArtDesigner" && (
-              <Link
-                to="/design-feed"
-                onClick={toggleMenu}
-                className="text-light-white hover:text-accent-red transition duration-200 text-lg"
-              >
-                Dashboard (Design Feed)
-              </Link>
-            )}
-            {userRole === "Shop" && (
-              <>
-                <Link
-                  to="/design-feed"
-                  onClick={toggleMenu}
-                  className="text-light-white hover:text-accent-red transition duration-200 text-lg"
-                >
-                  Design Feed
-                </Link>
-                <Link
-                  to="/booking-feed"
-                  onClick={toggleMenu}
-                  className="text-light-white hover:text-accent-red transition duration-200 text-lg"
-                >
-                  Booking Feed
-                </Link>
-              </>
-            )}
+            <Link
+              to="/feed"
+              onClick={toggleMenu}
+              className="text-light-white hover:text-accent-red transition duration-200 text-lg"
+            >
+              Feed
+            </Link>
             {(userRole === "ArtDesigner" || userRole === "Shop") && (
               <Link
                 to="/designs"

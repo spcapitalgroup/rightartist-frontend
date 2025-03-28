@@ -1,13 +1,12 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import api from "../api/axios";
 import { motion } from "framer-motion";
 import { Calendar, dateFnsLocalizer } from "react-big-calendar";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { enUS } from "date-fns/locale";
 import "react-big-calendar/lib/css/react-big-calendar.css";
-import { useNavigate, Link } from "react-router-dom"; // Add Link import
+import { useNavigate, Link } from "react-router-dom";
 
-// Set up date-fns localizer for react-big-calendar
 const localizer = dateFnsLocalizer({
   format,
   parse,
@@ -24,13 +23,40 @@ interface Booking {
   scheduledDate: string;
   status: "scheduled" | "completed" | "cancelled";
   contactInfo: { phone: string; email: string };
+  depositAmount?: number;
   shop?: { id: string; username: string };
   client?: { id: string; username: string };
   post?: { id: string; title: string };
 }
 
-const BookingsPage: React.FC = () => {
+interface Stats {
+  totalBookings: number;
+  completedBookings: number;
+  cancelledBookings: number;
+  totalRevenue: number;
+}
+
+interface Notification {
+  id: string;
+  userId: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface BookingsPageProps {
+  notifications: Notification[];
+}
+
+const BookingsPage: React.FC<BookingsPageProps> = ({ notifications }) => {
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [stats, setStats] = useState<Stats>({
+    totalBookings: 0,
+    completedBookings: 0,
+    cancelledBookings: 0,
+    totalRevenue: 0,
+  });
   const [error, setError] = useState("");
   const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
   const [rescheduleBookingId, setRescheduleBookingId] = useState<string | null>(null);
@@ -43,29 +69,55 @@ const BookingsPage: React.FC = () => {
   const userType = decoded.userType || "fan";
   const userId = decoded.id || "";
 
-  useEffect(() => {
-    const fetchBookings = async () => {
-      try {
-        if (!token) {
-          setError("Please log in to access this page");
-          return;
-        }
-
-        if (userType !== "shop") {
-          setError("Only shop users can access this page");
-          return;
-        }
-
-        const response = await api.get(`/api/bookings/shop/${userId}`);
-        setBookings(response.data.bookings || []);
-      } catch (err: any) {
-        setError(err.response?.data?.message || "Failed to load bookings");
-        console.error("❌ Fetch Bookings Error:", err.response?.data || err.message);
+  const fetchBookingsAndStats = useCallback(async () => {
+    try {
+      if (!token) {
+        setError("Please log in to access this page");
+        return;
       }
-    };
 
-    fetchBookings();
+      if (userType !== "shop") {
+        setError("Only shop users can access this page");
+        return;
+      }
+
+      const response = await api.get(`/api/bookings/shop/${userId}`);
+      const fetchedBookings: Booking[] = response.data.bookings || [];
+
+      setBookings(fetchedBookings);
+
+      const totalBookings = fetchedBookings.length;
+      const completedBookings = fetchedBookings.filter((b: Booking) => b.status === "completed").length;
+      const cancelledBookings = fetchedBookings.filter((b: Booking) => b.status === "cancelled").length;
+      const totalRevenue = fetchedBookings
+        .filter((b: Booking) => b.status === "completed" && b.depositAmount)
+        .reduce((sum: number, b: Booking) => sum + (b.depositAmount || 0), 0);
+
+      setStats({
+        totalBookings,
+        completedBookings,
+        cancelledBookings,
+        totalRevenue,
+      });
+    } catch (err: any) {
+      setError(err.response?.data?.message || "Failed to load bookings");
+      console.error("❌ Fetch Bookings Error:", err.response?.data || err.message);
+    }
   }, [token, userType, userId]);
+
+  useEffect(() => {
+    fetchBookingsAndStats();
+  }, [fetchBookingsAndStats]);
+
+  useEffect(() => {
+    if (notifications.length > 0) {
+      const latestNotification = notifications[notifications.length - 1];
+      if (latestNotification.message.toLowerCase().includes("booking")) {
+        console.log("🔔 New booking-related notification detected, refetching bookings...");
+        fetchBookingsAndStats();
+      }
+    }
+  }, [notifications, fetchBookingsAndStats]);
 
   const handleCancelBooking = async (bookingId: string) => {
     try {
@@ -75,6 +127,10 @@ const BookingsPage: React.FC = () => {
           booking.id === bookingId ? { ...booking, status: "cancelled" } : booking
         )
       );
+      setStats((prev) => ({
+        ...prev,
+        cancelledBookings: prev.cancelledBookings + 1,
+      }));
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to cancel booking");
       console.error("❌ Cancel Booking Error:", err.response?.data || err.message);
@@ -109,9 +165,7 @@ const BookingsPage: React.FC = () => {
   };
 
   const calendarEvents = bookings.map((booking) => ({
-    title: `Booking: ${booking.post?.title || "Untitled"} with ${
-      booking.client?.username || "Unknown"
-    }`,
+    title: `Booking: ${booking.post?.title || "Untitled"} with ${booking.client?.username || "Unknown"}`,
     start: new Date(booking.scheduledDate),
     end: new Date(booking.scheduledDate),
     allDay: false,
@@ -183,27 +237,52 @@ const BookingsPage: React.FC = () => {
             </div>
           </div>
 
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+          >
+            <div className="bg-dark-black p-4 rounded-sm border border-accent-gray">
+              <h3 className="text-lg font-semibold text-light-white">Total Bookings</h3>
+              <p className="text-2xl text-accent-red">{stats.totalBookings}</p>
+            </div>
+            <div className="bg-dark-black p-4 rounded-sm border border-accent-gray">
+              <h3 className="text-lg font-semibold text-light-white">Completed</h3>
+              <p className="text-2xl text-accent-red">{stats.completedBookings}</p>
+            </div>
+            <div className="bg-dark-black p-4 rounded-sm border border-accent-gray">
+              <h3 className="text-lg font-semibold text-light-white">Cancelled</h3>
+              <p className="text-2xl text-accent-red">{stats.cancelledBookings}</p>
+            </div>
+            <div className="bg-dark-black p-4 rounded-sm border border-accent-gray">
+              <h3 className="text-lg font-semibold text-light-white">Total Revenue</h3>
+              <p className="text-2xl text-accent-red">${stats.totalRevenue.toFixed(2)}</p>
+            </div>
+          </motion.div>
+
           {viewMode === "calendar" && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
+              className="mb-6"
             >
               <Calendar
                 localizer={localizer}
                 events={calendarEvents}
                 startAccessor="start"
                 endAccessor="end"
-                style={{ height: 500 }}
-                className="bg-dark-black text-light-white rounded-sm border border-accent-gray"
+                style={{ height: 400 }}
+                className="bg-dark-black text-light-white rounded-sm border border-accent-gray w-full max-w-4xl mx-auto"
                 onSelectEvent={(event) => {
                   const booking = event.resource as Booking;
                   alert(
                     `Booking: ${booking.post?.title || "Untitled"}\n` +
-                      `With: ${booking.client?.username || "Unknown"}\n` +
-                      `Date: ${new Date(booking.scheduledDate).toLocaleString()}\n` +
-                      `Status: ${booking.status}\n` +
-                      `Contact: ${booking.contactInfo.phone}, ${booking.contactInfo.email}`
+                    `With: ${booking.client?.username || "Unknown"}\n` +
+                    `Date: ${new Date(booking.scheduledDate).toLocaleString()}\n` +
+                    `Status: ${booking.status}\n` +
+                    `Contact: ${booking.contactInfo.phone}, ${booking.contactInfo.email}`
                   );
                 }}
               />

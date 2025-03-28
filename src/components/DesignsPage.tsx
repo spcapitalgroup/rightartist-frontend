@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import api from "../api/axios"; // Relative import without .ts extension
+import api from "../api/axios";
 import { motion } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
 
@@ -31,11 +31,6 @@ const DesignsPage: React.FC = () => {
   const token = localStorage.getItem("authToken");
   const decoded = token ? JSON.parse(atob(token.split(".")[1])) : {};
   const userType = decoded.userType || "fan";
-  const userId = decoded.id || "";
-  const wsRef = React.useRef<WebSocket | null>(null);
-  const reconnectAttempts = React.useRef(0);
-  const maxReconnectAttempts = 5;
-  const reconnectInterval = 5000; // 5 seconds
 
   useEffect(() => {
     const fetchDesigns = async () => {
@@ -45,17 +40,14 @@ const DesignsPage: React.FC = () => {
           return;
         }
 
-        // Fetch pending designs (for both shop and designer users)
         const pendingResponse = await api.get("/api/designs/pending");
         setPendingDesigns(pendingResponse.data.designs || []);
 
-        // Fetch purchased designs (for shop users)
         if (userType === "shop") {
           const purchasedResponse = await api.get("/api/designs/purchased");
           setPurchasedDesigns(purchasedResponse.data.designs || []);
         }
 
-        // Fetch sold designs (for designer users)
         if (userType === "designer") {
           const soldResponse = await api.get("/api/designs/sold");
           setSoldDesigns(soldResponse.data.designs || []);
@@ -67,98 +59,7 @@ const DesignsPage: React.FC = () => {
     };
 
     fetchDesigns();
-
-    // Set up WebSocket with reconnection logic
-    const connectWebSocket = () => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        console.log("🔍 WebSocket already connected for:", userId);
-        return;
-      }
-
-      wsRef.current = new WebSocket("ws://localhost:3002");
-      console.log("🔌 Attempting WebSocket connection for:", userId);
-
-      wsRef.current.onopen = () => {
-        console.log("🔌 Connected to WebSocket for:", userId);
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          try {
-            wsRef.current.send(JSON.stringify({ userId }));
-            reconnectAttempts.current = 0; // Reset reconnection attempts on success
-          } catch (err) {
-            console.error("❌ Failed to send userId on WebSocket open:", err);
-          }
-        }
-      };
-
-      wsRef.current.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log("🔍 WebSocket message received for:", userId, "Data:", data);
-          if (data.type === "stage-update") {
-            console.log("🔔 Received stage-update for design:", data.designId);
-            fetchDesigns(); // Refetch designs to reflect the update
-          }
-        } catch (error) {
-          console.error("❌ WebSocket Message Error:", error);
-        }
-      };
-
-      wsRef.current.onclose = () => {
-        console.log("❌ WebSocket Disconnected for DesignsPage:", userId);
-        if (reconnectAttempts.current < maxReconnectAttempts) {
-          console.log(`🔍 Reconnecting WebSocket, attempt ${reconnectAttempts.current + 1}/${maxReconnectAttempts}`);
-          setTimeout(() => {
-            reconnectAttempts.current += 1;
-            connectWebSocket();
-          }, reconnectInterval);
-        } else {
-          console.error("❌ Max reconnection attempts reached. WebSocket connection failed.");
-          setError("Failed to connect to WebSocket after multiple attempts.");
-        }
-      };
-
-      wsRef.current.onerror = (err) => {
-        console.error("❌ WebSocket Error for:", userId, err);
-      };
-    };
-
-    if (token && userId) {
-      connectWebSocket();
-
-      // Heartbeat to keep the connection alive
-      const heartbeat = setInterval(() => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          try {
-            wsRef.current.send(JSON.stringify({ type: "heartbeat", userId }));
-            console.log("🏓 Sent heartbeat to WebSocket for:", userId);
-          } catch (err) {
-            console.error("❌ Failed to send heartbeat:", err);
-          }
-        } else {
-          console.log("⚠️ WebSocket not open for:", userId, "State:", wsRef.current?.readyState, "—reconnecting...");
-          connectWebSocket();
-        }
-      }, 30000); // Send heartbeat every 30 seconds
-
-      // Handle window focus to reconnect if needed
-      const handleFocus = () => {
-        if (wsRef.current && wsRef.current.readyState !== WebSocket.OPEN) {
-          console.log("🔍 Window focused—reconnecting WebSocket for:", userId);
-          connectWebSocket();
-        }
-      };
-      window.addEventListener("focus", handleFocus);
-
-      return () => {
-        console.log("🛑 Cleaning up WebSocket for DesignsPage");
-        clearInterval(heartbeat);
-        window.removeEventListener("focus", handleFocus);
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.close();
-        }
-      };
-    }
-  }, [token, userType, userId]);
+  }, [token, userType]);
 
   const handleStageUpdate = async (designId: string) => {
     try {
@@ -172,9 +73,7 @@ const DesignsPage: React.FC = () => {
       }
 
       const response = await api.put(`/api/designs/${designId}/stage`, formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
+        headers: { "Content-Type": "multipart/form-data" },
       });
 
       setPendingDesigns((prev) =>
@@ -241,9 +140,9 @@ const DesignsPage: React.FC = () => {
                     ? "bg-accent-red text-light-white"
                     : "bg-dark-black text-light-white hover:bg-dark-gray"
                 }`}
-            >
-              Purchased
-            </button>
+              >
+                Purchased
+              </button>
             )}
             {userType === "designer" && (
               <button
@@ -253,9 +152,9 @@ const DesignsPage: React.FC = () => {
                     ? "bg-accent-red text-light-white"
                     : "bg-dark-black text-light-white hover:bg-dark-gray"
                 }`}
-            >
-              Sold
-            </button>
+              >
+                Sold
+              </button>
             )}
           </div>
           <div className="space-y-6">

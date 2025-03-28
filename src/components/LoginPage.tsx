@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import api from "../api/axios"; // Updated to use the custom axios instance
+import api from "../api/axios";
 import { motion } from "framer-motion";
 import { useNavigate, useLocation } from "react-router-dom";
 
@@ -18,7 +18,7 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
 
   useEffect(() => {
     if (location.pathname === "/signup") {
-      setIsLogin(false); // Force signup mode
+      setIsLogin(false);
       const params = new URLSearchParams(location.search);
       const inviteCode = params.get("invite");
       if (!inviteCode) {
@@ -26,21 +26,22 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
         navigate("/");
       } else {
         setInvite(inviteCode);
-        api.get(`/api/admin/validate-invite?invite=${inviteCode}`)
-          .then(response => {
+        api
+          .get(`/api/admin/validate-invite?invite=${inviteCode}`)
+          .then((response) => {
             if (!response.data.valid) {
               setError("Invalid or used invite link");
               navigate("/");
             }
           })
-          .catch(err => {
+          .catch((err) => {
             console.error("❌ Validate Invite Error:", err);
             setError("Failed to validate invite link");
             navigate("/");
           });
       }
     } else {
-      setIsLogin(true); // Default to login for "/"
+      setIsLogin(true);
     }
   }, [location, navigate]);
 
@@ -53,14 +54,22 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
       const token = response.data.token;
       localStorage.setItem("authToken", token);
       const decoded = JSON.parse(atob(token.split(".")[1]));
-      localStorage.setItem("userRole", decoded.userType === "fan" ? "Fan" : decoded.userType === "designer" ? "ArtDesigner" : decoded.userType);
+      localStorage.setItem(
+        "userRole",
+        decoded.userType === "fan" ? "Fan" : decoded.userType === "designer" ? "ArtDesigner" : decoded.userType
+      );
       setIsAuthenticated(true);
       setError("");
-      if (decoded.userType === "fan") {
-        navigate("/booking-feed");
-      } else {
-        navigate("/design-feed");
-      }
+      // Delay to ensure App.tsx processes the token
+      setTimeout(() => {
+        if (decoded.userType === "fan") {
+          navigate("/feed"); // Changed from /booking-feed
+        } else if (decoded.userType === "designer") {
+          navigate("/designs"); // Changed from /design-feed
+        } else {
+          navigate("/bookings"); // For shop users
+        }
+      }, 100);
     } catch (err: any) {
       console.error("❌ Login Error:", err.response?.data || err.message);
       setError(err.response?.data?.message || "Login failed");
@@ -86,10 +95,22 @@ const LoginPage: React.FC<{ setIsAuthenticated: (value: boolean) => void }> = ({
       const token = response.data.token;
       localStorage.setItem("authToken", token);
       const decoded = JSON.parse(atob(token.split(".")[1]));
-      localStorage.setItem("userRole", decoded.userType === "fan" ? "Fan" : decoded.userType === "designer" ? "ArtDesigner" : decoded.userType);
+      localStorage.setItem(
+        "userRole",
+        decoded.userType === "fan" ? "Fan" : decoded.userType === "designer" ? "ArtDesigner" : decoded.userType
+      );
       setIsAuthenticated(true);
       setError("");
-      navigate("/design-feed");
+      // Delay to ensure App.tsx processes the token
+      setTimeout(() => {
+        if (decoded.userType === "fan") {
+          navigate("/feed"); // Changed from /design-feed
+        } else if (decoded.userType === "designer") {
+          navigate("/designs"); // Changed from /design-feed
+        } else {
+          navigate("/bookings"); // For shop users
+        }
+      }, 100);
     } catch (err: any) {
       console.error("❌ Signup Error:", err.response?.data || err.message);
       setError(err.response?.data?.message || "Signup failed");

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import api from "../api/axios"; // Updated to use the custom axios instance
+import api from "../api/axios";
 import { motion } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
 
@@ -58,8 +58,6 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
   const decoded = token ? JSON.parse(atob(token.split(".")[1])) : {};
   const userId = decoded.id || "";
   const userType = decoded.userType || "fan";
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectAttempts = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -91,99 +89,18 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
       fetchUsers();
       fetchMessages();
     }
+  }, [token]);
 
-    // Set up WebSocket with reconnection logic
-    const connectWebSocket = () => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        console.log("🔍 WebSocket already connected for:", userId);
-        return;
-      }
-
-      // Add a small delay to ensure the server is ready
-      setTimeout(() => {
-        wsRef.current = new WebSocket("ws://localhost:3002");
-        console.log("🔌 Attempting WebSocket connection for:", userId);
-
-        wsRef.current.onopen = () => {
-          console.log("🔌 Connected to WebSocket for:", userId);
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            try {
-              wsRef.current.send(JSON.stringify({ userId }));
-              reconnectAttempts.current = 0; // Reset reconnection attempts on success
-            } catch (err) {
-              console.error("❌ Failed to send userId on WebSocket open:", err);
-            }
-          }
-        };
-
-        wsRef.current.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            console.log("🔍 WebSocket message received for:", userId, "Data:", data);
-            if (data.type === "message") {
-              setMessages((prev) => [...prev, data.message].sort(
-                (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-              ));
-            }
-          } catch (error) {
-            console.error("❌ WebSocket Message Error:", error);
-          }
-        };
-
-        wsRef.current.onclose = () => {
-          console.log("❌ WebSocket Disconnected for MessagingPage:", userId, "—Reconnecting...");
-          if (reconnectAttempts.current < 5) {
-            setTimeout(connectWebSocket, 1000 * Math.pow(2, reconnectAttempts.current));
-            reconnectAttempts.current += 1;
-            console.log("🔍 Reconnect attempt:", reconnectAttempts.current);
-          } else {
-            setError("Failed to connect to WebSocket after multiple attempts.");
-          }
-        };
-
-        wsRef.current.onerror = (err) => {
-          console.error("❌ WebSocket Error for:", userId, err);
-        };
-      }, 500); // 500ms delay to ensure server readiness
-    };
-
-    if (token && userId) {
-      connectWebSocket();
-    }
-
-    // Heartbeat to keep the connection alive
-    const heartbeat = setInterval(() => {
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        try {
-          wsRef.current.send(JSON.stringify({ type: "heartbeat", userId }));
-          console.log("🏓 Sent heartbeat to WebSocket for:", userId);
-        } catch (err) {
-          console.error("❌ Failed to send heartbeat:", err);
-        }
-      } else {
-        console.log("⚠️ WebSocket not open for:", userId, "State:", wsRef.current?.readyState, "—reconnecting...");
-        connectWebSocket();
-      }
-    }, 1000);
-
-    // Handle window focus to reconnect if needed
-    const handleFocus = () => {
-      if (wsRef.current && wsRef.current.readyState !== WebSocket.OPEN) {
-        console.log("🔍 Window focused—reconnecting WebSocket for:", userId);
-        connectWebSocket();
-      }
-    };
-    window.addEventListener("focus", handleFocus);
-
-    return () => {
-      console.log("🛑 Cleaning up WebSocket for MessagingPage");
-      clearInterval(heartbeat);
-      window.removeEventListener("focus", handleFocus);
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
-      }
-    };
-  }, [token, userId]);
+  // Sync initialMessages from App.tsx
+  useEffect(() => {
+    const parsedMessages = initialMessages.map((msg) => JSON.parse(msg) as Message);
+    setMessages((prev) => {
+      const combined = [...prev, ...parsedMessages].filter(
+        (msg, index, self) => index === self.findIndex((m) => m.id === msg.id)
+      );
+      return combined.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    });
+  }, [initialMessages]);
 
   useEffect(() => {
     const fetchDesigns = async () => {
@@ -206,16 +123,16 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Automatically select the first conversation when conversations are loaded
-  const conversations = users.map((user) => {
-    const userMessages = messages.filter(
-      (msg) => (msg.senderId === user.id && msg.receiverId === userId) || (msg.senderId === userId && msg.receiverId === user.id)
-    );
-    const lastMessage = userMessages[userMessages.length - 1];
-    return { user, lastMessage };
-  }).filter((conv) => conv.lastMessage).sort(
-    (a, b) => new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime()
-  );
+  const conversations = users
+    .map((user) => {
+      const userMessages = messages.filter(
+        (msg) => (msg.senderId === user.id && msg.receiverId === userId) || (msg.senderId === userId && msg.receiverId === user.id)
+      );
+      const lastMessage = userMessages[userMessages.length - 1];
+      return { user, lastMessage };
+    })
+    .filter((conv) => conv.lastMessage)
+    .sort((a, b) => new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime());
 
   useEffect(() => {
     if (conversations.length > 0 && !selectedUser) {
@@ -240,9 +157,9 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
         },
       });
 
-      setMessages((prev) => [...prev, response.data.data].sort(
-        (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      ));
+      setMessages((prev) =>
+        [...prev, response.data.data].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      );
       setNewMessage("");
       setImages([]);
       setSelectedDesign("");
@@ -266,6 +183,11 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
     }
   };
 
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    e.currentTarget.style.display = "none";
+    console.log(`Failed to load image: ${e.currentTarget.src}`);
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -273,8 +195,9 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
       transition={{ duration: 0.5 }}
       className="min-h-screen pt-20 pb-8 px-4 bg-dark-black text-light-white"
     >
-      <div className="max-w-6xl mx-auto">
-        <div className="bg-dark-gray p-6 rounded-sm shadow-sm border border-accent-gray">
+      <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-6">
+        {/* Main Messaging Section */}
+        <div className="lg:w-2/3 bg-dark-gray p-6 rounded-sm shadow-sm border border-accent-gray">
           <h1 className="text-3xl font-semibold text-light-white mb-6">Messages</h1>
           {error && <p className="text-red-500 mb-6">{error}</p>}
           <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
@@ -282,7 +205,7 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
             <div className="w-full sm:w-1/3">
               <h2 className="text-xl font-medium text-text-gray mb-4">Conversations</h2>
               {conversations.length > 0 ? (
-                <ul className="space-y-2">
+                <ul className="space-y-2 max-h-[60vh] overflow-y-auto">
                   {conversations.map(({ user, lastMessage }) => (
                     <li
                       key={user.id}
@@ -305,47 +228,15 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
             </div>
 
             {/* Chat Area */}
-            <div className="w-full sm:w-2/3">
+            <div className="w-full sm:w-2/3 flex flex-col">
               {selectedUser ? (
                 <>
-                  <h2 className="text-xl font-medium text-text-gray mb-4">Chat with {selectedUser.username}</h2>
-
-                  {/* Designs Section */}
-                  {designs.length > 0 && (
-                    <div className="mb-4 p-4 bg-dark-black rounded-sm border border-accent-gray">
-                      <h3 className="text-lg font-medium text-text-gray mb-2">Related Designs</h3>
-                      <div className="space-y-4">
-                        {designs.map((design) => (
-                          <div key={design.id} className="border border-accent-gray p-2 rounded-sm">
-                            <p className="text-light-white">Design: {design.Post.title}</p>
-                            <p className="text-text-gray text-sm">
-                              Stage: {design.stage.replace("_", " ").toUpperCase()}
-                            </p>
-                            <p className="text-text-gray text-sm">Price: ${design.price.toFixed(2)}</p>
-                            {design.images.length > 0 && (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {design.images.map((image, index) => (
-                                  <img
-                                    key={index}
-                                    src={`http://localhost:3000/uploads/${image}`}
-                                    alt={`Design ${index + 1}`}
-                                    className="w-24 h-24 object-cover rounded-sm"
-                                    onError={(e) => {
-                                      e.currentTarget.style.display = "none";
-                                      console.log(`Failed to load image: ${image}`);
-                                    }}
-                                  />
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  <h2 className="text-xl font-medium text-text-gray mb-4">
+                    Chat with {selectedUser.username}
+                  </h2>
 
                   {/* Messages */}
-                  <div className="h-96 overflow-y-auto mb-4 p-4 bg-dark-black rounded-sm border border-accent-gray">
+                  <div className="flex-1 max-h-[50vh] overflow-y-auto mb-4 p-4 bg-dark-black rounded-sm border border-accent-gray">
                     {messages
                       .filter(
                         (msg) =>
@@ -376,10 +267,7 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
                                     src={`http://localhost:3000/uploads/${image}`}
                                     alt={`Message ${index + 1}`}
                                     className="w-24 h-24 object-cover rounded-sm"
-                                    onError={(e) => {
-                                      e.currentTarget.style.display = "none";
-                                      console.log(`Failed to load image: ${image}`);
-                                    }}
+                                    onError={handleImageError}
                                   />
                                 ))}
                               </div>
@@ -440,7 +328,34 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
                       placeholder="Type your message..."
                       className="p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200 w-full"
                     />
+                    <label
+                      htmlFor="image-upload"
+                      className="inline-block p-2 bg-dark-black border border-accent-gray rounded-sm cursor-pointer hover:bg-accent-gray transition duration-200"
+                      title="Upload Images"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-6 w-6 text-light-white"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M3 9a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                      </svg>
+                    </label>
                     <input
+                      id="image-upload"
                       type="file"
                       multiple
                       accept="image/jpeg,image/jpg,image/png"
@@ -449,7 +364,7 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
                           setImages(Array.from(e.target.files).slice(0, 5));
                         }
                       }}
-                      className="text-light-white"
+                      className="hidden"
                     />
                     <button
                       onClick={handleSendMessage}
@@ -465,6 +380,47 @@ const MessagingPage: React.FC<MessagingPageProps> = ({ messages: initialMessages
             </div>
           </div>
         </div>
+
+        {/* Right Section: Design Sketches and Stages */}
+        {selectedUser && (
+          <div className="lg:w-1/3 bg-dark-gray p-6 rounded-sm shadow-sm border border-accent-gray">
+            <h2 className="text-2xl font-semibold text-light-white mb-4">Design Sketches</h2>
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+              {designs.length > 0 ? (
+                designs.map((design) => (
+                  <motion.div
+                    key={design.id}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.3 }}
+                    className="border border-accent-gray p-2 rounded-sm"
+                  >
+                    <p className="text-light-white">Design: {design.Post.title}</p>
+                    <p className="text-text-gray text-sm">
+                      Stage: {design.stage.replace("_", " ").toUpperCase()}
+                    </p>
+                    <p className="text-text-gray text-sm">Price: ${design.price.toFixed(2)}</p>
+                    {design.images.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {design.images.map((image, index) => (
+                          <img
+                            key={index}
+                            src={`http://localhost:3000/uploads/${image}`}
+                            alt={`Design ${index + 1}`}
+                            className="w-24 h-24 object-cover rounded-sm"
+                            onError={handleImageError}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </motion.div>
+                ))
+              ) : (
+                <p className="text-text-gray">No designs available for this conversation.</p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </motion.div>
   );

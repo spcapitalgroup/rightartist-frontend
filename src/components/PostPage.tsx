@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import api from "../api/axios";
 import { motion } from "framer-motion";
-import { formatDistanceToNow } from "date-fns";
 
 interface Post {
   id: string;
@@ -80,39 +79,52 @@ const PostPage: React.FC = () => {
     ((isShop && post?.clientId) || (isFan && post?.shopId) || (isDesigner && post?.shopId));
 
   useEffect(() => {
-    const fetchPostAndComments = async () => {
+    const fetchPost = async () => {
       try {
-        if (!id) {
-          setError("No post ID provided");
-          return;
-        }
-
+        if (!id) throw new Error("No post ID provided");
         const postResponse = await api.get(`/api/posts/${id}`);
+        if (!postResponse.data) throw new Error("Post not found");
         setPost(postResponse.data);
-
-        const commentsResponse = await api.get(`/api/comments/post/${id}`);
-        setComments(commentsResponse.data.comments || []);
-
-        // Fetch ratings for the post
-        const ratingsResponse = await api.get(`/api/ratings/post/${id}`);
-        setRatings(ratingsResponse.data.ratings || []);
+        setError("");
       } catch (err: any) {
+        console.error("❌ Post Fetch Error:", err.response?.data || err.message);
         setError(err.response?.data?.message || "Failed to load post");
-        console.error("❌ Fetch Error:", err.response?.data || err.message);
       }
     };
 
-    fetchPostAndComments();
+    const fetchComments = async () => {
+      try {
+        if (!id) return;
+        const commentsResponse = await api.get(`/api/comments/post/${id}`);
+        setComments(commentsResponse.data.comments || []);
+      } catch (err: any) {
+        console.error("❌ Comments Fetch Error:", err.response?.data || err.message);
+        setComments([]);
+      }
+    };
+
+    const fetchRatings = async () => {
+      try {
+        if (!id) return;
+        const ratingsResponse = await api.get(`/api/ratings/post/${id}`);
+        setRatings(ratingsResponse.data.ratings || []);
+      } catch (err: any) {
+        console.error("❌ Ratings Fetch Error:", err.response?.data || err.message);
+        setRatings([]);
+      }
+    };
+
+    fetchPost();
+    fetchComments();
+    fetchRatings();
   }, [id]);
 
   const handleCommentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting) return;
+    if (isSubmitting || !id) return;
     setIsSubmitting(true);
 
     try {
-      if (!id) throw new Error("No post ID provided");
-
       const commentData = {
         content: newComment,
         postId: id,
@@ -121,16 +133,19 @@ const PostPage: React.FC = () => {
       };
 
       const response = await api.post("/api/comments", commentData);
+      const newCommentData = response.data.data; // Backend returns { data: comment }
+      
       setComments((prev) => {
         if (replyingTo) {
           return prev.map((comment) =>
             comment.id === replyingTo
-              ? { ...comment, replies: [...(comment.replies || []), response.data] }
+              ? { ...comment, replies: [...(comment.replies || []), newCommentData] }
               : comment
           );
         }
-        return [...prev, response.data];
+        return [...prev, newCommentData];
       });
+
       setNewComment("");
       setNewPrice("");
       setReplyingTo(null);
@@ -146,7 +161,6 @@ const PostPage: React.FC = () => {
   const handleAcceptComment = async (commentId: string) => {
     try {
       if (!id) throw new Error("No post ID provided");
-
       await api.put(`/api/posts/${id}/accept`, { commentId });
       setPost((prev) =>
         prev
@@ -168,18 +182,16 @@ const PostPage: React.FC = () => {
 
   const handleRatingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSubmitting || !ratingValue) return;
+    if (isSubmitting || !ratingValue || !id || !post) return;
     setIsSubmitting(true);
 
     try {
-      if (!id || !post) throw new Error("No post ID provided");
-
       const rateeId = isShop
-        ? post.clientId // Shop rates fan
+        ? post.clientId
         : isFan
-        ? post.shopId // Fan rates shop
+        ? post.shopId
         : isDesigner
-        ? post.shopId // Designer rates shop
+        ? post.shopId
         : null;
       if (!rateeId) throw new Error("No ratee ID found");
 
@@ -205,12 +217,7 @@ const PostPage: React.FC = () => {
   };
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    e.currentTarget.style.display = "none"; // Hide the image if it fails to load
-  };
-
-  const truncateText = (text: string, maxLength: number) => {
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + "...";
+    e.currentTarget.style.display = "none";
   };
 
   if (error) {
@@ -218,9 +225,19 @@ const PostPage: React.FC = () => {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="min-h-screen pt-20 pb-8 px-4 bg-dark-black"
+        className="min-h-screen pt-20 pb-8 px-4 bg-dark-black text-light-white flex items-center justify-center"
       >
-        <div className="max-w-4xl mx-auto text-red-500">{error}</div>
+        <div className="max-w-4xl mx-auto text-center">
+          <p className="text-red-500 text-xl">{error}</p>
+          <motion.button
+            onClick={() => navigate(-1)}
+            className="mt-4 bg-accent-red text-light-white px-6 py-2 rounded-sm font-semibold hover:bg-red-700 transition duration-300"
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+          >
+            Go Back
+          </motion.button>
+        </div>
       </motion.div>
     );
   }
@@ -230,15 +247,14 @@ const PostPage: React.FC = () => {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        className="min-h-screen pt-20 pb-8 px-4 bg-dark-black"
+        className="min-h-screen pt-20 pb-8 px-4 bg-dark-black text-light-white flex items-center justify-center"
       >
-        <div className="max-w-4xl mx-auto text-light-white">Loading...</div>
+        <div className="max-w-4xl mx-auto text-center">Loading...</div>
       </motion.div>
     );
   }
 
-  const canSeeContactInfo =
-    (isShop && post.shopId === userId) || (isFan && post.clientId === userId);
+  const canSeeContactInfo = (isShop && post.shopId === userId) || (isFan && post.clientId === userId);
 
   return (
     <motion.div
@@ -264,14 +280,10 @@ const PostPage: React.FC = () => {
               <p className="text-text-gray mt-1">
                 Posted by:{" "}
                 <Link
-                  to={`/profile/${
-                    post.feedType === "design" ? post.shopId : post.clientId
-                  }`}
+                  to={`/profile/${post.feedType === "design" ? post.shopId : post.clientId}`}
                   className="text-accent-red hover:underline"
                 >
-                  {post.feedType === "design"
-                    ? post.shop?.username
-                    : post.client?.username || "Unknown"}
+                  {post.feedType === "design" ? post.shop?.username : post.client?.username || "Unknown"}
                 </Link>
               </p>
               <p className="text-text-gray mt-1">Status: {post.status}</p>
@@ -280,24 +292,20 @@ const PostPage: React.FC = () => {
               </p>
               {post.status === "scheduled" && post.scheduledDate && (
                 <div className="text-text-gray mt-2">
-                  <p>Scheduled: {new Date(post.scheduledDate).toLocaleString()}</p>
+                  <p key="scheduled">Scheduled: {new Date(post.scheduledDate).toLocaleString()}</p>
                   {canSeeContactInfo && post.contactInfo && (
                     <>
-                      <p>Contact: {post.contactInfo.phone}</p>
-                      <p>Email: {post.contactInfo.email}</p>
+                      <p key="phone">Contact: {post.contactInfo.phone}</p>
+                      <p key="email">Email: {post.contactInfo.email}</p>
                     </>
                   )}
-                  <p>
+                  <p key="with">
                     With:{" "}
                     <Link
-                      to={`/profile/${
-                        post.feedType === "booking" ? post.shopId : post.clientId
-                      }`}
+                      to={`/profile/${post.feedType === "booking" ? post.shopId : post.clientId}`}
                       className="text-accent-red hover:underline"
                     >
-                      {post.feedType === "booking"
-                        ? post.shop?.username
-                        : post.client?.username || "Unknown"}
+                      {post.feedType === "booking" ? post.shop?.username : post.client?.username || "Unknown"}
                     </Link>
                   </p>
                 </div>
@@ -306,7 +314,7 @@ const PostPage: React.FC = () => {
             <div className="grid grid-cols-2 gap-2">
               {post.images.map((image, index) => (
                 <motion.img
-                  key={index}
+                  key={image}
                   src={`http://localhost:3000/uploads/${image}`}
                   alt={`Post ${index + 1}`}
                   className="w-full h-32 object-cover rounded-sm hover:scale-105 transition-transform duration-300"
@@ -340,9 +348,7 @@ const PostPage: React.FC = () => {
               transition={{ duration: 0.5 }}
               className="mb-6 p-4 bg-dark-black rounded-sm border border-accent-gray"
             >
-              <h2 className="text-2xl font-semibold text-light-white mb-4">
-                Rate This Interaction
-              </h2>
+              <h2 className="text-2xl font-semibold text-light-white mb-4">Rate This Interaction</h2>
               <form onSubmit={handleRatingSubmit} className="space-y-4">
                 <div>
                   <label className="block text-text-gray mb-1">Rating (1-5)</label>
@@ -357,9 +363,7 @@ const PostPage: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-text-gray mb-1">
-                    Comment (Optional)
-                  </label>
+                  <label className="block text-text-gray mb-1">Comment (Optional)</label>
                   <textarea
                     value={ratingComment}
                     onChange={(e) => setRatingComment(e.target.value)}
@@ -387,41 +391,33 @@ const PostPage: React.FC = () => {
               transition={{ duration: 0.5 }}
               className="mb-6 p-4 bg-dark-black rounded-sm border border-accent-gray"
             >
-              <h2 className="text-2xl font-semibold text-light-white mb-4">
-                Ratings
-              </h2>
-              {ratings.map((rating, index) => (
+              <h2 className="text-2xl font-semibold text-light-white mb-4">Ratings</h2>
+              {ratings.map((rating) => (
                 <motion.div
                   key={rating.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: index * 0.1 }}
+                  transition={{ duration: 0.3 }}
                   className="bg-dark-gray p-4 rounded-sm border border-accent-gray mb-2"
                 >
-                  <p className="text-text-gray">
-                    <Link
-                      to={`/profile/${rating.raterId}`}
-                      className="text-accent-red hover:underline"
-                    >
+                  <p key="rater" className="text-text-gray">
+                    <Link to={`/profile/${rating.raterId}`} className="text-accent-red hover:underline">
                       {rating.rater.username}
                     </Link>{" "}
                     rated{" "}
-                    <Link
-                      to={`/profile/${rating.rateeId}`}
-                      className="text-accent-red hover:underline"
-                    >
+                    <Link to={`/profile/${rating.rateeId}`} className="text-accent-red hover:underline">
                       {rating.ratee.username}
                     </Link>
                   </p>
-                  <p className="text-text-gray mt-1">
+                  <p key="rating" className="text-text-gray mt-1">
                     Rating: <span className="text-light-white">{rating.rating} ★★★★★</span>
                   </p>
                   {rating.comment && (
-                    <p className="text-text-gray mt-1">
+                    <p key="comment" className="text-text-gray mt-1">
                       Comment: <span className="text-light-white">{rating.comment}</span>
                     </p>
                   )}
-                  <p className="text-text-gray text-sm mt-1">
+                  <p key="date" className="text-text-gray text-sm mt-1">
                     Rated on: {new Date(rating.createdAt).toLocaleDateString()}
                   </p>
                 </motion.div>
@@ -429,9 +425,7 @@ const PostPage: React.FC = () => {
             </motion.div>
           )}
 
-          <h2 className="text-2xl font-semibold text-light-white mb-4">
-            Comments
-          </h2>
+          <h2 className="text-2xl font-semibold text-light-white mb-4">Comments</h2>
           {canComment && (
             <motion.form
               onSubmit={handleCommentSubmit}
@@ -447,9 +441,7 @@ const PostPage: React.FC = () => {
                 <textarea
                   value={replyingTo ? replyContent : newComment}
                   onChange={(e) =>
-                    replyingTo
-                      ? setReplyContent(e.target.value)
-                      : setNewComment(e.target.value)
+                    replyingTo ? setReplyContent(e.target.value) : setNewComment(e.target.value)
                   }
                   className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
                   rows={3}
@@ -458,9 +450,7 @@ const PostPage: React.FC = () => {
               </div>
               {(isShop || isDesigner) && post.feedType === "design" && !replyingTo && (
                 <div>
-                  <label className="block text-text-gray mb-1">
-                    Price (Optional)
-                  </label>
+                  <label className="block text-text-gray mb-1">Price (Optional)</label>
                   <input
                     type="number"
                     value={newPrice}
@@ -477,11 +467,7 @@ const PostPage: React.FC = () => {
                   whileTap={{ scale: 0.95 }}
                   disabled={isSubmitting}
                 >
-                  {isSubmitting
-                    ? "Posting..."
-                    : replyingTo
-                    ? "Post Reply"
-                    : "Post Comment"}
+                  {isSubmitting ? "Posting..." : replyingTo ? "Post Reply" : "Post Comment"}
                 </motion.button>
                 {replyingTo && (
                   <motion.button
@@ -511,22 +497,19 @@ const PostPage: React.FC = () => {
                   transition={{ duration: 0.3 }}
                   className="bg-dark-black p-4 rounded-sm shadow-sm border border-accent-gray hover:shadow-xl hover:border-accent-red transition-all duration-300"
                 >
-                  <p className="text-text-gray">{comment.content}</p>
-                  {comment.price && (
-                    <p className="text-text-gray mt-1">
+                  <p key="content" className="text-text-gray">{comment.content}</p>
+                  {comment.price !== undefined && comment.price !== null && (
+                    <p key="price" className="text-text-gray mt-1">
                       Price: ${comment.price.toFixed(2)}
                     </p>
                   )}
-                  <p className="text-text-gray text-sm mt-1">
+                  <p key="user" className="text-text-gray text-sm mt-1">
                     By:{" "}
-                    <Link
-                      to={`/profile/${comment.userId}`}
-                      className="text-accent-red hover:underline"
-                    >
+                    <Link to={`/profile/${comment.userId}`} className="text-accent-red hover:underline">
                       {comment.user?.username}
                     </Link>
                   </p>
-                  <p className="text-text-gray text-sm mt-1">
+                  <p key="date" className="text-text-gray text-sm mt-1">
                     Posted: {new Date(comment.createdAt).toLocaleDateString()}
                   </p>
                   {isShop && post.feedType === "design" && post.status === "open" && (
@@ -559,17 +542,14 @@ const PostPage: React.FC = () => {
                           key={reply.id}
                           className="bg-dark-gray p-3 rounded-sm border border-accent-gray"
                         >
-                          <p className="text-text-gray">{reply.content}</p>
-                          <p className="text-text-gray text-sm mt-1">
+                          <p key="content" className="text-text-gray">{reply.content}</p>
+                          <p key="user" className="text-text-gray text-sm mt-1">
                             By:{" "}
-                            <Link
-                              to={`/profile/${reply.userId}`}
-                              className="text-accent-red hover:underline"
-                            >
+                            <Link to={`/profile/${reply.userId}`} className="text-accent-red hover:underline">
                               {reply.user?.username}
                             </Link>
                           </p>
-                          <p className="text-text-gray text-sm mt-1">
+                          <p key="date" className="text-text-gray text-sm mt-1">
                             Posted: {new Date(reply.createdAt).toLocaleDateString()}
                           </p>
                         </div>

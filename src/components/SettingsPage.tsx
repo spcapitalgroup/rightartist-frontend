@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import api from "../api/axios"; // Relative import without .ts extension
+import api from "../api/axios";
 import { motion } from "framer-motion";
+import { usePaymentInputs } from "react-payment-inputs";
 
 interface User {
   id: string;
@@ -37,6 +38,10 @@ const SettingsPage: React.FC = () => {
   const [depositRequired, setDepositRequired] = useState(false);
   const [depositAmount, setDepositAmount] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubscribing, setIsSubscribing] = useState(false);
+  const [subscriptionStatus, setSubscriptionStatus] = useState("");
+
+  const { meta, getCardNumberProps, getExpiryDateProps, getCVCProps } = usePaymentInputs();
 
   const token = localStorage.getItem("authToken");
   const decoded = token ? JSON.parse(atob(token.split(".")[1])) : {};
@@ -55,7 +60,6 @@ const SettingsPage: React.FC = () => {
         console.log("🔍 User Response (Full):", response);
         console.log("🔍 User Response Data:", response.data);
 
-        // No need to parse response.data as JSON; axios already parses it
         const userData = response.data;
         setUser(userData);
         setFirstName(userData.firstName || "");
@@ -107,6 +111,44 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  const handleSubscribe = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isSubscribing) return;
+    setIsSubscribing(true);
+    setError("");
+    setSubscriptionStatus("");
+
+    try {
+      const { erroredInputs, values } = meta;
+      if (erroredInputs.cardNumber || erroredInputs.expiryDate || erroredInputs.cvc) {
+        throw new Error("Invalid card details");
+      }
+
+      // Step 1: Tokenize card details with SPIn
+      const tokenizeResponse = await api.post("/api/spin/tokenize", {
+        cardNumber: values.cardNumber.replace(/\s/g, ""),
+        expiry: values.expiryDate,
+        cvv: values.cvc,
+      });
+
+      const { cardToken } = tokenizeResponse.data;
+      if (!cardToken) {
+        throw new Error("Failed to tokenize card");
+      }
+
+      // Step 2: Process subscription payment with TransactAPI
+      const subscribeResponse = await api.post("/api/payments/subscribe", { cardToken });
+      setSubscriptionStatus(subscribeResponse.data.message);
+
+      // Update user state to reflect paid status
+      setUser((prev) => prev ? { ...prev, isPaid: true } : null);
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.message || "Failed to process subscription");
+    } finally {
+      setIsSubscribing(false);
+    }
+  };
+
   if (error) {
     return (
       <motion.div
@@ -146,6 +188,10 @@ const SettingsPage: React.FC = () => {
           transition={{ duration: 0.5, ease: "easeOut" }}
         >
           <h1 className="text-4xl font-bold text-light-white mb-6 tracking-wide">Settings</h1>
+          {error && <p className="text-red-500 mb-4">{error}</p>}
+          {subscriptionStatus && <p className="text-green-500 mb-4">{subscriptionStatus}</p>}
+
+          {/* Existing Profile Settings Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <motion.div
@@ -324,6 +370,50 @@ const SettingsPage: React.FC = () => {
               </motion.button>
             </motion.div>
           </form>
+
+          {/* Subscription Section */}
+          {(userType === "shop" || userType === "elite") && !user.isPaid && (
+            <div className="mt-8">
+              <h2 className="text-2xl font-semibold text-light-white mb-4">Subscribe to Premium</h2>
+              <p className="text-text-gray mb-4">
+                Unlock premium features for {userType === "shop" ? "$24.99" : "$50.00"} per month.
+              </p>
+              <form onSubmit={handleSubscribe} className="space-y-4">
+                <div>
+                  <label className="block text-text-gray mb-1">Card Number</label>
+                  <input
+                    {...getCardNumberProps({ onChange: () => setError("") })}
+                    className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
+                  />
+                </div>
+                <div className="flex space-x-4">
+                  <div className="flex-1">
+                    <label className="block text-text-gray mb-1">Expiry Date</label>
+                    <input
+                      {...getExpiryDateProps({ onChange: () => setError("") })}
+                      className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="block text-text-gray mb-1">CVC</label>
+                    <input
+                      {...getCVCProps({ onChange: () => setError("") })}
+                      className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
+                    />
+                  </div>
+                </div>
+                <motion.button
+                  type="submit"
+                  className="bg-accent-red text-light-white px-6 py-2 rounded-sm font-semibold hover:bg-red-700 transition duration-300"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  disabled={isSubscribing}
+                >
+                  {isSubscribing ? "Processing..." : "Subscribe"}
+                </motion.button>
+              </form>
+            </div>
+          )}
         </motion.div>
       </div>
     </motion.div>

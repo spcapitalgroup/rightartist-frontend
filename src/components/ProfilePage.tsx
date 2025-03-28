@@ -3,6 +3,8 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import api from "../api/axios";
 import { motion } from "framer-motion";
 
+// Suppress ESLint warning for Link since it's used in the file
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface User {
   id: string;
   firstName: string;
@@ -69,7 +71,8 @@ const ProfilePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [designPosts, setDesignPosts] = useState<Post[]>([]);
+  const [bookingPosts, setBookingPosts] = useState<Post[]>([]);
   const [ratings, setRatings] = useState<Rating[]>([]);
   const [averageRating, setAverageRating] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -105,14 +108,12 @@ const ProfilePage: React.FC = () => {
         setLocation(userData.location || "");
         setSocialLinks(userData.socialLinks || { instagram: "", facebook: "", twitter: "" });
 
-        // Fetch posts based on user type
-        if (userData.userType === "fan") {
-          const postsResponse = await api.get(`/api/posts/user/${id}/booking`);
-          setPosts(postsResponse.data.posts || []);
-        } else if (userData.userType === "designer" || userData.userType === "shop") {
-          const postsResponse = await api.get(`/api/posts/user/${id}/design`);
-          setPosts(postsResponse.data.posts || []);
-        }
+        // Fetch both design and booking posts for all user types
+        const designResponse = await api.get(`/api/posts/user/${id}/design`);
+        setDesignPosts(designResponse.data.posts || []);
+
+        const bookingResponse = await api.get(`/api/posts/user/${id}/booking`);
+        setBookingPosts(bookingResponse.data.posts || []);
 
         // Fetch ratings for the user
         const ratingsResponse = await api.get(`/api/ratings/user/${id}`);
@@ -130,6 +131,8 @@ const ProfilePage: React.FC = () => {
         } else {
           setAverageRating(null);
         }
+
+        setError("");
       } catch (err: any) {
         setError(err.response?.data?.message || "Failed to load profile");
         console.error("❌ Fetch Error:", err.response?.data || err.message);
@@ -146,18 +149,13 @@ const ProfilePage: React.FC = () => {
   };
 
   const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    e.currentTarget.style.display = "none"; // Hide the image if it fails to load
+    e.currentTarget.style.display = "none";
   };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const updatedUser = {
-        bio,
-        location,
-        socialLinks,
-      };
-
+      const updatedUser = { bio, location, socialLinks };
       const userResponse = await api.put(`/api/users/${id}`, updatedUser);
       setUser(userResponse.data);
 
@@ -276,9 +274,7 @@ const ProfilePage: React.FC = () => {
               </div>
               {userType === "designer" && (
                 <div>
-                  <label className="block text-text-gray mb-1">
-                    Add to Portfolio (Images)
-                  </label>
+                  <label className="block text-text-gray mb-1">Add to Portfolio (Images)</label>
                   <input
                     type="file"
                     multiple
@@ -404,9 +400,7 @@ const ProfilePage: React.FC = () => {
 
               {userType === "designer" && (
                 <div className="mb-6">
-                  <h2 className="text-2xl font-semibold text-light-white mb-4">
-                    Portfolio
-                  </h2>
+                  <h2 className="text-2xl font-semibold text-light-white mb-4">Portfolio</h2>
                   {user.portfolio && user.portfolio.length > 0 ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                       {user.portfolio.map((image, index) => (
@@ -428,70 +422,115 @@ const ProfilePage: React.FC = () => {
                 </div>
               )}
 
-              <h2 className="text-2xl font-semibold text-light-white mb-4">
-                {userType === "fan" ? "Booking Posts" : "Design Posts"}
-              </h2>
-              <div className="space-y-6">
-                {posts.length > 0 ? (
-                  posts.map((post, index) => (
-                    <motion.div
-                      key={post.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3, delay: index * 0.1 }}
-                      className="bg-dark-black p-4 rounded-sm shadow-sm border border-accent-gray hover:shadow-xl hover:border-accent-red transition-all duration-300"
-                    >
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
-                        <div className="flex-1">
-                          <h3
-                            className="text-xl font-semibold text-light-white hover:text-accent-red transition-colors duration-200 cursor-pointer"
-                            onClick={() => navigate(`/post/${post.id}`)}
-                          >
-                            {post.title}
-                          </h3>
-                          <p className="text-text-gray mt-2">
-                            {truncateText(post.description, 100)}
-                          </p>
-                          <p className="text-text-gray mt-1">Location: {post.location}</p>
-                          <p className="text-text-gray mt-1">
-                            Posted by:{" "}
-                            <span
-                              className="text-accent-red hover:underline cursor-pointer"
-                              onClick={() =>
-                                navigate(
-                                  `/profile/${
-                                    userType === "fan" ? post.shopId : post.clientId
-                                  }`
-                                )
-                              }
+              {designPosts.length > 0 && (
+                <div className="mb-6">
+                  <h2 className="text-2xl font-semibold text-light-white mb-4">Design Posts</h2>
+                  <div className="space-y-6">
+                    {designPosts.map((post, index) => (
+                      <motion.div
+                        key={post.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: index * 0.1 }}
+                        className="bg-dark-black p-4 rounded-sm shadow-sm border border-accent-gray hover:shadow-xl hover:border-accent-red transition-all duration-300"
+                      >
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
+                          <div className="flex-1">
+                            <h3
+                              className="text-xl font-semibold text-light-white hover:text-accent-red transition-colors duration-200 cursor-pointer"
+                              onClick={() => navigate(`/post/${post.id}`)}
                             >
-                              {userType === "fan"
-                                ? post.shop?.username
-                                : post.client?.username || "Unknown"}
-                            </span>
-                          </p>
-                          <p className="text-text-gray text-sm mt-1">
-                            Created: {new Date(post.createdAt).toLocaleDateString()}
-                          </p>
+                              {post.title}
+                            </h3>
+                            <p className="text-text-gray mt-2">{truncateText(post.description, 100)}</p>
+                            <p className="text-text-gray mt-1">Location: {post.location}</p>
+                            <p className="text-text-gray mt-1">
+                              Posted by:{" "}
+                              <Link
+                                to={`/profile/${post.shopId || post.clientId}`}
+                                className="text-accent-red hover:underline"
+                              >
+                                {post.shop?.username || post.client?.username || "Unknown"}
+                              </Link>
+                            </p>
+                            <p className="text-text-gray text-sm mt-1">
+                              Created: {new Date(post.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          {post.images && post.images[0] && (
+                            <motion.img
+                              src={`http://localhost:3000/uploads/${post.images[0]}`}
+                              alt={post.title}
+                              className="w-16 h-16 object-cover rounded-sm hover:scale-110 hover:brightness-110 transition-transform duration-200"
+                              onError={handleImageError}
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ duration: 0.3 }}
+                            />
+                          )}
                         </div>
-                        {post.images && post.images[0] && (
-                          <motion.img
-                            src={`http://localhost:3000/uploads/${post.images[0]}`}
-                            alt={post.title}
-                            className="w-16 h-16 object-cover rounded-sm hover:scale-110 hover:brightness-110 transition-transform duration-200"
-                            onError={handleImageError}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ duration: 0.3 }}
-                          />
-                        )}
-                      </div>
-                    </motion.div>
-                  ))
-                ) : (
-                  <p className="text-text-gray">No posts available.</p>
-                )}
-              </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {bookingPosts.length > 0 && (
+                <div className="mb-6">
+                  <h2 className="text-2xl font-semibold text-light-white mb-4">Booking Posts</h2>
+                  <div className="space-y-6">
+                    {bookingPosts.map((post, index) => (
+                      <motion.div
+                        key={post.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: index * 0.1 }}
+                        className="bg-dark-black p-4 rounded-sm shadow-sm border border-accent-gray hover:shadow-xl hover:border-accent-red transition-all duration-300"
+                      >
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
+                          <div className="flex-1">
+                            <h3
+                              className="text-xl font-semibold text-light-white hover:text-accent-red transition-colors duration-200 cursor-pointer"
+                              onClick={() => navigate(`/post/${post.id}`)}
+                            >
+                              {post.title}
+                            </h3>
+                            <p className="text-text-gray mt-2">{truncateText(post.description, 100)}</p>
+                            <p className="text-text-gray mt-1">Location: {post.location}</p>
+                            <p className="text-text-gray mt-1">
+                              Posted by:{" "}
+                              <Link
+                                to={`/profile/${post.shopId || post.clientId}`}
+                                className="text-accent-red hover:underline"
+                              >
+                                {post.shop?.username || post.client?.username || "Unknown"}
+                              </Link>
+                            </p>
+                            <p className="text-text-gray text-sm mt-1">
+                              Created: {new Date(post.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          {post.images && post.images[0] && (
+                            <motion.img
+                              src={`http://localhost:3000/uploads/${post.images[0]}`}
+                              alt={post.title}
+                              className="w-16 h-16 object-cover rounded-sm hover:scale-110 hover:brightness-110 transition-transform duration-200"
+                              onError={handleImageError}
+                              initial={{ opacity: 0, scale: 0.9 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ duration: 0.3 }}
+                            />
+                          )}
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {designPosts.length === 0 && bookingPosts.length === 0 && (
+                <p className="text-text-gray">No posts available.</p>
+              )}
             </motion.div>
           )}
         </motion.div>
