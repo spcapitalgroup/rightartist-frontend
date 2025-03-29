@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from "react-router-dom";
 import api from "./api/axios";
-import MaintenancePage from "./components/MaintenancePage"; // Import the new MaintenancePage
+import LandingPage from "./components/LandingPage";
 import LoginPage from "./components/LoginPage";
 import FeedPage from "./components/FeedPage";
 import MessagingPage from "./components/MessagingPage";
@@ -64,11 +64,11 @@ const App: React.FC = () => {
     setIsAuthenticated(false);
     setToken(null);
     setUserData(null);
-    navigate("/login"); // Redirect to login instead of landing page
+    navigate("/");
   };
 
   useEffect(() => {
-    if (isAuthenticated && (location.pathname === "/login" || location.pathname === "/signup")) {
+    if (isAuthenticated && (location.pathname === "/login" || location.pathname === "/signup" || location.pathname === "/")) {
       if (isAdmin) {
         navigate("/admin");
       } else if (userType === "fan") {
@@ -143,27 +143,45 @@ const App: React.FC = () => {
       )}
       <div className={isAuthenticated && !isLoginOrSignup ? "pt-16" : ""}>
         <Routes>
-          {/* Default route redirects to MaintenancePage */}
-          <Route path="/" element={<MaintenancePage />} />
-
-          {/* Allow access to login and signup routes */}
+          <Route path="/" element={<LandingPage setIsAuthenticated={setIsAuthenticated} />} />
           <Route path="/login" element={<LoginPage setIsAuthenticated={setIsAuthenticated} />} />
           <Route path="/signup" element={<InviteRoute><LoginPage setIsAuthenticated={setIsAuthenticated} /></InviteRoute>} />
-
-          {/* All other routes redirect to MaintenancePage */}
-          <Route path="/feed" element={<MaintenancePage />} />
-          <Route path="/post/:id" element={<MaintenancePage />} />
-          <Route path="/post/:id/schedule" element={<MaintenancePage />} />
-          <Route path="/profile/:id" element={<MaintenancePage />} />
-          <Route path="/messages" element={<MaintenancePage />} />
-          <Route path="/settings" element={<MaintenancePage />} />
-          <Route path="/stats" element={<MaintenancePage />} />
-          <Route path="/overlay" element={<MaintenancePage />} />
-          <Route path="/admin" element={<MaintenancePage />} />
-          <Route path="/notifications" element={<MaintenancePage />} />
-          <Route path="/designs" element={<MaintenancePage />} />
-          <Route path="/bookings" element={<MaintenancePage />} />
-          <Route path="*" element={<MaintenancePage />} />
+          <Route path="/feed" element={<ProtectedRoute><FeedPage notifications={notifications} /></ProtectedRoute>} />
+          <Route path="/post/:id" element={<ProtectedRoute><PostPage /></ProtectedRoute>} />
+          <Route path="/post/:id/schedule" element={<ProtectedRoute><ScheduleInkPage /></ProtectedRoute>} />
+          <Route path="/profile/:id" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+          <Route path="/messages" element={
+            <ProtectedRoute>
+              {userType !== "admin" ? <MessagingPage messages={messages} /> : <Navigate to="/admin" replace />}
+            </ProtectedRoute>
+          } />
+          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/stats" element={
+            <ProtectedRoute>
+              {(userType === "designer" || (userType === "shop" && isPaid)) ? <StatsPage /> : <Navigate to="/" replace />}
+            </ProtectedRoute>
+          } />
+          <Route path="/overlay" element={
+            <ProtectedRoute>
+              {userType === "shop" && isElite ? <OverlayPage /> : <Navigate to="/" replace />}
+            </ProtectedRoute>
+          } />
+          <Route path="/admin" element={
+            <ProtectedRoute>
+              {userType === "admin" ? <AdminPage /> : <Navigate to="/" replace />}
+            </ProtectedRoute>
+          } />
+          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+          <Route path="/designs" element={
+            <ProtectedRoute>
+              {(userType === "designer" || userType === "shop") ? <DesignsPage /> : <Navigate to="/" replace />}
+            </ProtectedRoute>
+          } />
+          <Route path="/bookings" element={
+            <ProtectedRoute>
+              {userType === "shop" ? <BookingsPage notifications={notifications} /> : <Navigate to="/" replace />}
+            </ProtectedRoute>
+          } />
         </Routes>
       </div>
     </>
