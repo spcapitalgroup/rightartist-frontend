@@ -79,13 +79,19 @@ const FeedPage: React.FC<FeedPageProps> = ({ notifications }) => {
         const bookingResponse = await api.get("/api/feed/", { params: { feedType: "booking" } });
         console.log("🔍 Design Feed Response:", designResponse.data);
         console.log("🔍 Booking Feed Response:", bookingResponse.data);
-        setDesignPosts(designResponse.data.posts || []);
-        setBookingPosts(bookingResponse.data.posts || []);
+        const designPostsData = Array.isArray(designResponse.data.posts)
+          ? designResponse.data.posts.filter((post: Post) => post !== undefined && post !== null)
+          : [];
+        const bookingPostsData = Array.isArray(bookingResponse.data.posts)
+          ? bookingResponse.data.posts.filter((post: Post) => post !== undefined && post !== null)
+          : [];
+        setDesignPosts(designPostsData);
+        setBookingPosts(bookingPostsData);
 
-        const designUserIds = designResponse.data.posts
+        const designUserIds = designPostsData
           .map((post: Post) => post.shopId)
           .filter((id: string | null | undefined): id is string => Boolean(id));
-        const bookingUserIds = bookingResponse.data.posts
+        const bookingUserIds = bookingPostsData
           .map((post: Post) => post.clientId)
           .filter((id: string | null | undefined): id is string => Boolean(id));
         const uniqueUserIds = [...new Set([...designUserIds, ...bookingUserIds])] as string[];
@@ -99,7 +105,9 @@ const FeedPage: React.FC<FeedPageProps> = ({ notifications }) => {
         const feedType = userType === "fan" ? "booking" : "design";
         const response = await api.get("/api/feed/", { params: { feedType } });
         console.log(`🔍 ${feedType} Feed Response:`, response.data);
-        const fetchedPosts = response.data.posts || [];
+        const fetchedPosts = Array.isArray(response.data.posts)
+          ? response.data.posts.filter((post: Post) => post !== undefined && post !== null)
+          : [];
         setDesignPosts(fetchedPosts);
         setBookingPosts([]);
 
@@ -189,7 +197,11 @@ const FeedPage: React.FC<FeedPageProps> = ({ notifications }) => {
       });
       console.log("✅ Post Creation Response:", createResponse.data);
 
-      const newPost = createResponse.data.data;
+      const newPost = createResponse.data.post; // Access the post from createResponse.data.post
+
+      if (!newPost || !newPost.id) {
+        throw new Error("Invalid post data received from server");
+      }
 
       if (images.length > 0) {
         const formData = new FormData();
@@ -202,16 +214,48 @@ const FeedPage: React.FC<FeedPageProps> = ({ notifications }) => {
         });
         console.log("✅ Image Upload Response:", uploadResponse.data);
 
-        newPost.images = uploadResponse.data.images;
+        newPost.images = uploadResponse.data.imageUrls || [];
       }
 
+      // Ensure newPost has all required fields
+      const formattedPost: Post = {
+        id: newPost.id,
+        title: newPost.title || "Untitled",
+        description: newPost.description || "No description",
+        location: newPost.location || "Unknown",
+        feedType: newPost.feedType || feedType,
+        status: newPost.status || "open",
+        images: newPost.images || [],
+        createdAt: newPost.createdAt || new Date().toISOString(),
+        comments: newPost.comments || [],
+        shop: newPost.shop || undefined,
+        client: newPost.client || undefined,
+        clientId: newPost.clientId || null,
+        shopId: newPost.shopId || null,
+      };
+
       if (isShop) {
-        activeTab === "design"
-          ? setDesignPosts([newPost, ...designPosts])
-          : setBookingPosts([newPost, ...bookingPosts]);
+        if (activeTab === "design") {
+          setDesignPosts((prev) => {
+            const updatedPosts = [formattedPost, ...prev];
+            console.log("🔍 Updated Design Posts:", updatedPosts);
+            return updatedPosts;
+          });
+        } else {
+          setBookingPosts((prev) => {
+            const updatedPosts = [formattedPost, ...prev];
+            console.log("🔍 Updated Booking Posts:", updatedPosts);
+            return updatedPosts;
+          });
+        }
       } else {
-        setDesignPosts([newPost, ...designPosts]);
+        setDesignPosts((prev) => {
+          const updatedPosts = [formattedPost, ...prev];
+          console.log("🔍 Updated Design Posts:", updatedPosts);
+          return updatedPosts;
+        });
       }
+
       setTitle("");
       setDescription("");
       setLocation("");
@@ -225,11 +269,14 @@ const FeedPage: React.FC<FeedPageProps> = ({ notifications }) => {
   };
 
   const truncateText = (text: string, maxLength: number) => {
+    if (!text) return "No content";
     if (text.length <= maxLength) return text;
     return text.substring(0, maxLength) + "...";
   };
 
   const postsToShow = isShop ? (activeTab === "design" ? designPosts : bookingPosts) : designPosts;
+
+  console.log("🔍 Posts to Show:", postsToShow);
 
   return (
     <motion.div
@@ -343,7 +390,13 @@ const FeedPage: React.FC<FeedPageProps> = ({ notifications }) => {
           )}
           <div className={`space-y-6 ${viewType === "tiled" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6" : ""}`}>
             {postsToShow.map((post, index) => {
-              const truncatedDescription = truncateText(post.description, 100);
+              // Add robust null check to ensure post exists and has required fields
+              if (!post || !post.id) {
+                console.warn("🔴 Skipping invalid post:", post);
+                return null;
+              }
+
+              const truncatedDescription = truncateText(post.description || "No description", 100);
               const visibleComments = post.comments?.slice(0, 2) || [];
               const userId = isShop && activeTab === "booking" ? post.clientId : post.shopId;
               const rating = userId ? ratings[userId] || 0 : 0;
@@ -361,10 +414,10 @@ const FeedPage: React.FC<FeedPageProps> = ({ notifications }) => {
                   <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-4 sm:space-y-0 sm:space-x-6">
                     <div className="flex-1">
                       <h2 className="text-xl font-semibold text-light-white hover:text-accent-red transition-colors duration-200">
-                        {post.title}
+                        {post.title || "Untitled"}
                       </h2>
                       <p className="text-text-gray mt-2">{truncatedDescription}</p>
-                      <p className="text-text-gray mt-1">Location: {post.location}</p>
+                      <p className="text-text-gray mt-1">Location: {post.location || "Unknown"}</p>
                       <p className="text-text-gray text-sm mt-1">
                         Posted by:{" "}
                         <Link
@@ -385,8 +438,8 @@ const FeedPage: React.FC<FeedPageProps> = ({ notifications }) => {
                           <p>Scheduled: {new Date(post.scheduledDate).toLocaleString()}</p>
                           {post.contactInfo && (
                             <>
-                              <p>Contact: {post.contactInfo.phone}</p>
-                              <p>Email: {post.contactInfo.email}</p>
+                              <p>Contact: {post.contactInfo.phone || "N/A"}</p>
+                              <p>Email: {post.contactInfo.email || "N/A"}</p>
                             </>
                           )}
                           <p>
@@ -403,8 +456,8 @@ const FeedPage: React.FC<FeedPageProps> = ({ notifications }) => {
                     </div>
                     {(viewType === "tiled" || viewType === "list") && post.images && post.images[0] && (
                       <motion.img
-                        src={`http://localhost:3000/uploads/${post.images[0]}`}
-                        alt={post.title}
+                        src={post.images[0]} // Use the Cloudinary URL directly
+                        alt={post.title || "Post Image"}
                         className="w-16 h-16 object-cover rounded-sm hover:scale-110 hover:brightness-110 transition-transform duration-200"
                         onError={handleImageError}
                         initial={{ opacity: 0, scale: 0.9 }}
@@ -417,12 +470,12 @@ const FeedPage: React.FC<FeedPageProps> = ({ notifications }) => {
                     {visibleComments.length > 0 ? (
                       visibleComments.map((comment) => (
                         <div key={comment.id} className="text-text-gray text-sm mb-2">
-                          <p>{truncateText(comment.content, 50)}</p>
+                          <p>{truncateText(comment.content || "No content", 50)}</p>
                           {comment.price && <p>Price: ${comment.price.toFixed(2)}</p>}
                           <p>
                             By:{" "}
                             <Link to={`/profile/${comment.userId}`} className="text-accent-red hover:underline">
-                              {comment.user?.username}
+                              {comment.user?.username || "Unknown"}
                             </Link>
                           </p>
                         </div>
@@ -474,6 +527,7 @@ const FeedPage: React.FC<FeedPageProps> = ({ notifications }) => {
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Title"
                   className="w-full p-2 bg-dark-black border border-accent-gray rounded-sm text-light-white focus:outline-none focus:ring-2 focus:ring-accent-red transition duration-200"
+                  required
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.5, delay: 0.1 }}

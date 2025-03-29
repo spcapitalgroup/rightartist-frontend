@@ -31,8 +31,11 @@ const useWebSocket = (userId: string) => {
   const connectWebSocket = useCallback(() => {
     if (!userId || (wsRef.current && wsRef.current.readyState === WebSocket.OPEN)) return;
 
-    console.log(`🔌 Attempting WebSocket connection for: "${userId}"`);
-    const ws = new WebSocket("ws://localhost:3002");
+    // Ensure REACT_APP_API_URL is a string, with a fallback
+    const apiUrl: string = process.env.REACT_APP_API_URL || "https://rightartist-backend.onrender.com";
+    const wsUrl = `${apiUrl.replace("https://", "wss://")}`;
+    console.log(`🔌 Attempting WebSocket connection for: "${userId}" to ${wsUrl}`);
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
