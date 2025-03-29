@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import api from "../api/axios";
 import { motion } from "framer-motion";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow } from "date-fns"; // We'll use this now
 
 interface Post {
   id: string;
@@ -319,7 +319,7 @@ const PostPage: React.FC = () => {
               </p>
               <p className="text-text-gray mt-1">Status: {post.status || "Unknown"}</p>
               <p className="text-text-gray mt-1">
-                Created: {post.createdAt ? new Date(post.createdAt).toLocaleDateString() : "Unknown"}
+                Created: {post.createdAt ? formatDistanceToNow(new Date(post.createdAt), { addSuffix: true }) : "Unknown"}
               </p>
               {post.status === "scheduled" && post.scheduledDate && (
                 <div className="text-text-gray mt-2">
@@ -453,7 +453,7 @@ const PostPage: React.FC = () => {
                     </p>
                   )}
                   <p key="date" className="text-text-gray text-sm mt-1">
-                    Rated on: {new Date(rating.createdAt).toLocaleDateString()}
+                    Rated on: {rating.createdAt ? formatDistanceToNow(new Date(rating.createdAt), { addSuffix: true }) : "Unknown"}
                   </p>
                 </motion.div>
               ))}
@@ -545,7 +545,7 @@ const PostPage: React.FC = () => {
                     </Link>
                   </p>
                   <p key="date" className="text-text-gray text-sm mt-1">
-                    Posted: {comment.createdAt ? new Date(comment.createdAt).toLocaleDateString() : "Unknown"}
+                    Posted: {comment.createdAt ? formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true }) : "Unknown"}
                   </p>
                   {isShop && post.feedType === "design" && post.status === "open" && (
                     <motion.button
@@ -585,7 +585,7 @@ const PostPage: React.FC = () => {
                             </Link>
                           </p>
                           <p key="date" className="text-text-gray text-sm mt-1">
-                            Posted: {reply.createdAt ? new Date(reply.createdAt).toLocaleDateString() : "Unknown"}
+                            Posted: {reply.createdAt ? formatDistanceToNow(new Date(reply.createdAt), { addSuffix: true }) : "Unknown"}
                           </p>
                         </div>
                       ))}
